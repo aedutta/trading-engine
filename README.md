@@ -3,8 +3,8 @@
 A high-performance, low-latency trading engine simulation designed to process market data and execute strategies with sub-microsecond latency. This project demonstrates advanced C++ optimization techniques used in HFT firms, including lock-free data structures, zero-copy I/O, and kernel-level tuning.
 # v2
 Plans for version 2:
- - Implement more robust execution strategy
- - High fidelity simulation
+ - Implement more robust execution strategy (right now its just buy if less than X amt)
+ - High fidelity simulation: ``FeedHandler`` pushes data as fast as the CPU allows. This is a Throughput Test, not a Strategy Simulation. A real market has time gaps between ticks.
  - Connect to real world data (crypto/coinbase)
 # v1 Done
 ## 🛠️ Architecture
@@ -13,7 +13,7 @@ The system runs on a pipelined architecture with pinned threads to maximize cach
 
 1.  **Feed Handler (Core 1):** Streams binary market data via `mmap` and pushes to the Strategy Queue.
 2.  **Strategy Engine (Core 2):** Consumes ticks, executes logic (Price < Threshold), and pushes Orders to the Execution Queue.
-3.  **Execution Gateway (Core 3):**
+3.  **Execution Gateway (Core 3):** Consumes orders and measures end-to-end latency.
 ## 📊 Benchmarks
 
 **Environment:** Linux (WSL2), GCC 11+, C++20
