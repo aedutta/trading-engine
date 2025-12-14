@@ -1,0 +1,14 @@
+# Build artifacts
+build/
+
+# Data files (too large for git)
+data/
+*.bin
+*.csv
+
+# Output files
+latencies.csv
+
+# IDE settings
+.vscode/
+.idea/
