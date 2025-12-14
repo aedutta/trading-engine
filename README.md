@@ -7,6 +7,20 @@ Plans for version 2:
  - High fidelity simulation
  - Connect to real world data (crypto/coinbase)
 # v1 Done
+## 📊 Benchmarks
+
+**Environment:** Linux (WSL2), GCC 11+, C++20
+**Dataset:** 169 Million Ticks (BTC/USDT)
+
+| Metric | Result | Notes |
+| :--- | :--- | :--- |
+| **Min Latency** | **~46 ns** | **< 0.05 µs** (Hardware Limit) |
+| **Median Latency** | **~1.0 µs** | Queueing delay dominates |
+| **Max Latency** | **~70 ms** | OS Scheduler Interrupts (WSL2) |
+| **Throughput** | **~4 Million msg/s** | |
+
+*Note: The "Max Latency" is high due to the non-realtime nature of WSL2 (Windows Subsystem for Linux). The Minimum Latency represents the true architectural speed of the code.*
+
 ## 🚀 Performance Optimizations
 
 ### 1. Zero-Copy Data Ingestion (Memory Mapped I/O)
@@ -55,20 +69,6 @@ The system runs on a pipelined architecture with pinned threads to maximize cach
 1.  **Feed Handler (Core 1):** Streams binary market data via `mmap` and pushes to the Strategy Queue.
 2.  **Strategy Engine (Core 2):** Consumes ticks, executes logic (Price < Threshold), and pushes Orders to the Execution Queue.
 3.  **Execution Gateway (Core 3):** Consumes orders and measures end-to-end latency.
-
-## 📊 Benchmarks
-
-**Environment:** Linux (WSL2), GCC 11+, C++20
-**Dataset:** 169 Million Ticks (BTC/USDT)
-
-| Metric | Result | Notes |
-| :--- | :--- | :--- |
-| **Min Latency** | **~46 ns** | **< 0.05 µs** (Hardware Limit) |
-| **Median Latency** | **~1.0 µs** | Queueing delay dominates |
-| **Max Latency** | **~70 ms** | OS Scheduler Interrupts (WSL2) |
-| **Throughput** | **~4 Million msg/s** | |
-
-*Note: The "Max Latency" is high due to the non-realtime nature of WSL2 (Windows Subsystem for Linux). The Minimum Latency represents the true architectural speed of the code.*
 
 ## 💻 Build & Run
 
