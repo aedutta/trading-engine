@@ -1,8 +1,10 @@
 #include "strategy/StrategyEngine.hpp"
+#include "strategy/OrderBook.hpp"
 #include "common/Utils.hpp"
 #include <iostream>
 #include <immintrin.h> // For _mm_pause
 #include <cstring>
+#include <memory>
 
 namespace hft {
 
@@ -36,21 +38,24 @@ namespace hft {
     void StrategyEngine::run() {
         utils::pin_thread_to_core(constants::STRATEGY_ENGINE_CORE);
 
+        // Initialize Order Book centered around ~109,600 USDT
+        DenseOrderBook order_book(10960000000000LL); 
+
         BinaryTick tick;
         uint64_t order_id = 0;
 
         while (running_) {
             if (input_buffer_.pop(tick)) {
+                order_book.on_update(tick.is_bid, tick.price, tick.quantity);
+                
                 // Price is now in Satoshis (int64_t).
                 if (tick.price < constants::STRATEGY_PRICE_THRESHOLD) {
                     Order order;
                     order.id = ++order_id;
                     order.origin_timestamp = tick.timestamp; 
                     order.is_buy = true;
-                    // Optimization: Pass fixed-point price directly, no division
                     order.price = tick.price;
-                    order.quantity = constants::DEFAULT_ORDER_QTY * constants::PRICE_SCALE; // Convert default qty to fixed point
-                    // Optimization: Integer copy for symbol
+                    order.quantity = constants::DEFAULT_ORDER_QTY * constants::PRICE_SCALE; 
                     order.symbol = tick.symbol;
 
                     while (!output_buffer_.push(order) && running_) {

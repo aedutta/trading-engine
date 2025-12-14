@@ -26,8 +26,9 @@ int main() {
     strategy_engine.start();
     feed_handler.start();
 
-    // Run for 10 seconds to collect data
-    std::this_thread::sleep_for(std::chrono::seconds(3));
+    // Run for 5 seconds to verify simulation speed
+    std::cout << "Running simulation for 5 seconds..." << std::endl;
+    std::this_thread::sleep_for(std::chrono::seconds(5));
 
     feed_handler.stop();
     strategy_engine.stop();

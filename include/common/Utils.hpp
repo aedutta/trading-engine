@@ -15,7 +15,8 @@ namespace hft::constants {
     constexpr int STRATEGY_ENGINE_CORE = 2;
     constexpr int EXECUTION_GATEWAY_CORE = 3;
     constexpr double DEFAULT_ORDER_QTY = 0.01;
-    constexpr int64_t STRATEGY_PRICE_THRESHOLD = 10908600000000LL; // 200,000.00 * 1e8
+    // Updated threshold to 110,000.00 to ensure trades trigger on current dataset (Price ~109,600)
+    constexpr int64_t STRATEGY_PRICE_THRESHOLD = 11000000000000LL; 
 }
 
 namespace hft::utils {

@@ -51,13 +51,7 @@ namespace hft {
         file_size_ = sb.st_size;
 
         // Align file size to 2MB for Transparent Huge Pages (THP)
-        // Note: We can't change the file size here, but we can ensure our mapping is aligned.
-        // mmap typically returns page-aligned memory.
-        // To fully leverage THP, the kernel needs to be configured, but we can try to hint it.
-        
-        // Use MAP_HUGETLB if available and configured (often requires root/admin setup), 
-        // otherwise rely on THP with madvise(MADV_HUGEPAGE).
-        
+        // Use MAP_HUGETLB if available, otherwise rely on THP with madvise(MADV_HUGEPAGE).
         mapped_addr_ = mmap(nullptr, file_size_, PROT_READ, MAP_PRIVATE | MAP_POPULATE, fd_, 0);
         if (mapped_addr_ == MAP_FAILED) {
             mapped_addr_ = mmap(nullptr, file_size_, PROT_READ, MAP_PRIVATE, fd_, 0);
@@ -67,9 +61,8 @@ namespace hft {
             }
         }
 
-        // Hint for Transparent Huge Pages (if enabled in OS)
+        // Hint for Transparent Huge Pages and Sequential Access
         madvise(mapped_addr_, file_size_, MADV_HUGEPAGE);
-        // Hint for Sequential Access
         madvise(mapped_addr_, file_size_, MADV_SEQUENTIAL);
 
         size_t num_ticks = file_size_ / sizeof(BinaryTick);
@@ -84,11 +77,27 @@ namespace hft {
     void FeedHandler::run() {
         utils::pin_thread_to_core(constants::FEED_HANDLER_CORE);
 
+        if (ticks_.empty()) return;
+
+        // Simulation Logic: Replay historical data at real-time speed
+        uint64_t sim_start_tsc = utils::rdtsc();
+        uint64_t data_start_time = ticks_[0].timestamp; 
+
         for (const auto& tick : ticks_) {
             if (!running_) break;
 
+            // Calculate simulation time offset (Microseconds -> Nanoseconds -> Cycles)
+            uint64_t time_offset_us = tick.timestamp - data_start_time;
+            uint64_t time_offset_ns = time_offset_us * 1000; 
+            uint64_t target_tsc = sim_start_tsc + (time_offset_ns * utils::CYCLES_PER_NS);
+
+            // Spin-wait until real time matches simulation time
+            while (utils::rdtsc() < target_tsc) {
+                _mm_pause(); 
+            }
+
             BinaryTick t = tick;
-            t.timestamp = utils::rdtsc();
+            t.timestamp = utils::rdtsc(); // Capture "Now" as the new origin time
 
             while (!output_buffer_.push(t) && running_) {
                 _mm_pause();
