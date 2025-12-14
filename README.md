@@ -99,3 +99,9 @@ Consumes orders and measures end-to-end latency.
     ```bash
     ./build/hft_engine
     ```
+
+4.  **Run Benchmark Suite (Automated):**
+    ```bash
+    ./benchmark.sh
+    ```
+    This script builds the project, runs the simulation, and generates a detailed latency report with a histogram.
