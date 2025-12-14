@@ -1,5 +1,6 @@
 # Build artifacts
 build/
+tools/converter
 
 # Data files (too large for git)
 data/
