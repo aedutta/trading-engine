@@ -1,7 +1,12 @@
 # High-Frequency Trading Engine (C++20)
 
 A high-performance, low-latency trading engine simulation designed to process market data and execute strategies with sub-microsecond latency. This project demonstrates advanced C++ optimization techniques used in HFT firms, including lock-free data structures, zero-copy I/O, and kernel-level tuning.
-
+# v2
+Plans for version 2:
+ - Implement more robust execution strategy
+ - High fidelity simulation
+ - Connect to real world data (crypto/coinbase)
+# v1 Done
 ## 🚀 Performance Optimizations
 
 ### 1. Zero-Copy Data Ingestion (Memory Mapped I/O)
