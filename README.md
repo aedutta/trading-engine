@@ -7,6 +7,13 @@ Plans for version 2:
  - High fidelity simulation
  - Connect to real world data (crypto/coinbase)
 # v1 Done
+## 🛠️ Architecture
+
+The system runs on a pipelined architecture with pinned threads to maximize cache locality:
+
+1.  **Feed Handler (Core 1):** Streams binary market data via `mmap` and pushes to the Strategy Queue.
+2.  **Strategy Engine (Core 2):** Consumes ticks, executes logic (Price < Threshold), and pushes Orders to the Execution Queue.
+3.  **Execution Gateway (Core 3):**
 ## 📊 Benchmarks
 
 **Environment:** Linux (WSL2), GCC 11+, C++20
@@ -62,13 +69,7 @@ Plans for version 2:
 
 ---
 
-## 🛠️ Architecture
-
-The system runs on a pipelined architecture with pinned threads to maximize cache locality:
-
-1.  **Feed Handler (Core 1):** Streams binary market data via `mmap` and pushes to the Strategy Queue.
-2.  **Strategy Engine (Core 2):** Consumes ticks, executes logic (Price < Threshold), and pushes Orders to the Execution Queue.
-3.  **Execution Gateway (Core 3):** Consumes orders and measures end-to-end latency.
+Consumes orders and measures end-to-end latency.
 
 ## 💻 Build & Run
 
