@@ -13,3 +13,7 @@ latencies.csv
 # IDE settings
 .vscode/
 .idea/
+
+# Secrets
+private/
+*.pem

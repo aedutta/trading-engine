@@ -1,5 +1,5 @@
 #!/bin/bash
-KEY_FILE="private/hft-key.pem"
+KEY_FILE="private/new-key.pem"
 IP="3.236.194.30"
 USER="ec2-user"
 
