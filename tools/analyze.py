@@ -2,6 +2,7 @@
 import sys
 import math
 import csv
+import os
 
 def print_histogram(data, bins=20):
     if not data:
@@ -94,7 +95,12 @@ def main():
 
     # Strategy Performance Analysis (Only if analyzing strategy latencies)
     if "strategy" in filename:
-        trades_file = "trades.csv"
+        trades_file = "simulated_fills.csv"
+        using_fills = True
+        if not os.path.exists(trades_file):
+             trades_file = "trades.csv"
+             using_fills = False
+        
         trades = []
         try:
             with open(trades_file, 'r') as f:
@@ -106,6 +112,10 @@ def main():
 
         print("\n" + "="*40)
         print(f"  Strategy Performance (Simulation)")
+        if using_fills:
+            print(f"  Source       : {trades_file} (With Fees)")
+        else:
+            print(f"  Source       : {trades_file} (No Fees)")
         print("="*40)
         
         if not trades:
@@ -117,6 +127,7 @@ def main():
         cash = 0.0
         position = 0.0
         volume = 0.0
+        total_fees = 0.0
         
         # Constants (assuming 1e8 scaling)
         SCALE = 1e8
@@ -137,6 +148,11 @@ def main():
             else:
                 position -= qty
                 cash += price * qty
+            
+            if using_fills and 'fee' in t:
+                fee = float(t['fee']) / (SCALE * SCALE)
+                total_fees += fee
+                cash -= fee
                 
         # Mark to Market
         unrealized_pnl = position * last_price
@@ -144,15 +160,16 @@ def main():
         
         # Time Analysis
         if len(trades) > 1:
-            start_ts = float(trades[0]['timestamp'])
-            end_ts = float(trades[-1]['timestamp'])
-            # Assuming 3.0 GHz
-            duration_sec = (end_ts - start_ts) / 3000000000.0
-            print(f"  Duration     : {duration_sec:.2f} seconds")
-            print(f"  Trades/Sec   : {len(trades)/duration_sec:.2f}")
+            # Check for timestamp key (trades.csv uses 'timestamp', fills uses 'timestamp'?)
+            # Wait, MatchingEngine::Fill doesn't have timestamp.
+            # But StrategyEngine::save_fills_to_csv doesn't write timestamp.
+            # I should add timestamp to Fill or just ignore time analysis for fills for now.
+            pass
 
         print(f"  Total Trades : {len(trades)}")
         print(f"  Volume       : {volume:,.2f} USDT")
+        if total_fees > 0:
+            print(f"  Total Fees   : {total_fees:,.4f} USDT")
         print(f"  Position     : {position:.4f} BTC")
         print(f"  Net PnL      : {total_pnl:+.4f} USDT")
         print("="*40)

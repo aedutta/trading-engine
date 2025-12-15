@@ -41,6 +41,8 @@ namespace hft {
 
         // Benchmarking
         utils::LatencyRecorder latency_recorder_;
+        std::vector<MatchingEngine::Fill> fills_;
+        void save_fills_to_csv(const std::string& filename);
     };
 
 }

@@ -2,6 +2,7 @@
 #include "strategy/OrderBook.hpp"
 #include "common/Utils.hpp"
 #include <iostream>
+#include <fstream>
 #include <immintrin.h> // For _mm_pause
 #include <cstring>
 #include <memory>
@@ -31,6 +32,7 @@ namespace hft {
             thread_.join();
         }
         latency_recorder_.save_to_csv("strategy_latencies.csv");
+        save_fills_to_csv("simulated_fills.csv");
     }
 
     // Function: run
@@ -80,9 +82,10 @@ namespace hft {
 
                 if (tick.is_trade) {
                     // Process Fills via Matching Engine
-                    auto filled_orders = matching_engine_.on_trade_update(tick.price);
-                    for (const auto& filled_order : filled_orders) {
-                        position += (filled_order.is_buy ? 1 : -1);
+                    auto filled_orders = matching_engine_.on_trade_update(tick.price, tick.timestamp);
+                    for (const auto& fill : filled_orders) {
+                        position += (fill.is_buy ? 1 : -1);
+                        fills_.push_back(fill);
                     }
                     latency_recorder_.record(start_tsc, utils::rdtsc());
                     continue; // Skip OFI calculation for Trade ticks
@@ -151,7 +154,7 @@ namespace hft {
 
                                 if (output_buffer_.push(order)) {
                                     // Place order in Matching Engine for simulation
-                                    matching_engine_.place_order(order);
+                                    matching_engine_.place_order(order, tick.timestamp);
                                     
                                     // Update State
                                     if (trade_signal) {
@@ -169,6 +172,20 @@ namespace hft {
                 _mm_pause(); 
             }
         }
+    }
+
+    void StrategyEngine::save_fills_to_csv(const std::string& filename) {
+        std::ofstream file(filename);
+        file << "order_id,is_buy,price,quantity,fee\n";
+        for (const auto& fill : fills_) {
+            file << fill.order_id << ","
+                 << (fill.is_buy ? 1 : 0) << ","
+                 << fill.price << ","
+                 << fill.quantity << ","
+                 << fill.fee << "\n";
+        }
+        file.close();
+        std::cout << "[Strategy] Saved " << fills_.size() << " fills to " << filename << std::endl;
     }
 
 }
