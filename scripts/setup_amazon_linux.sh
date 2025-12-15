@@ -26,7 +26,8 @@ if [ ! -d "dpdk-23.11" ]; then
     wget https://fast.dpdk.org/rel/dpdk-23.11.tar.xz
     tar -xf dpdk-23.11.tar.xz
     cd dpdk-23.11
-    meson setup build -Dexamples=helloworld
+    # Disable GVE driver due to type conflict with system headers on AL2023
+    meson setup build -Dexamples=helloworld -Ddisable_drivers=net/gve
     ninja -C build
     ninja -C build install
     ldconfig
