@@ -32,6 +32,9 @@ namespace hft::network {
         // Callback receives pointer to packet data and length
         void poll(std::function<void(const uint8_t*, uint16_t)> callback);
 
+        // Send a packet (burst write)
+        void send(const uint8_t* data, uint16_t len);
+
     private:
 #ifdef USE_DPDK
         uint16_t port_id_;

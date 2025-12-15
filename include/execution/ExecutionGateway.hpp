@@ -3,6 +3,7 @@
 #include "common/RingBuffer.hpp"
 #include "common/Types.hpp"
 #include "common/Utils.hpp"
+#include "network/DPDKPoller.hpp"
 #include <atomic>
 #include <thread>
 #include <vector>
@@ -16,7 +17,7 @@ namespace hft {
         // Function: ExecutionGateway
         // Description: Constructor.
         // Inputs: input_buffer - Source of orders.
-        ExecutionGateway(RingBuffer<Order, constants::RING_BUFFER_SIZE>& input_buffer);
+        ExecutionGateway(RingBuffer<Order, constants::RING_BUFFER_SIZE>& input_buffer, network::DPDKPoller* poller = nullptr);
 
         // Function: start
         // Description: Starts the execution thread.
@@ -30,6 +31,7 @@ namespace hft {
         void run();
 
         RingBuffer<Order, constants::RING_BUFFER_SIZE>& input_buffer_;
+        network::DPDKPoller* poller_;
         std::atomic<bool> running_{false};
         std::thread thread_;
         std::vector<uint64_t> latencies_; 

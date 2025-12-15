@@ -7,8 +7,8 @@
 
 namespace hft {
 
-    ExecutionGateway::ExecutionGateway(RingBuffer<Order, constants::RING_BUFFER_SIZE>& input_buffer)
-        : input_buffer_(input_buffer) {
+    ExecutionGateway::ExecutionGateway(RingBuffer<Order, constants::RING_BUFFER_SIZE>& input_buffer, network::DPDKPoller* poller)
+        : input_buffer_(input_buffer), poller_(poller) {
             latencies_.reserve(1000000); 
             executed_orders_.reserve(1000000);
         }
@@ -64,6 +64,14 @@ namespace hft {
         while (running_) {
             if (input_buffer_.pop(order)) {
                 uint64_t now = utils::rdtsc();
+                
+                // Send via DPDK if available
+                if (poller_) {
+                    // In a real system, we would serialize 'order' to FIX/SBE here.
+                    // For benchmark, we send the raw struct.
+                    poller_->send(reinterpret_cast<const uint8_t*>(&order), sizeof(Order));
+                }
+
                 // Note: order.origin_timestamp must also be captured via rdtsc() in FeedHandler/Strategy
                 // Currently it is likely still using chrono. We need to update FeedHandler/Strategy too.
                 uint64_t latency = now - order.origin_timestamp;

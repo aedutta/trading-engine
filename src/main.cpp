@@ -88,7 +88,12 @@ int main(int argc, char** argv) {
 
     // Enable Capture Mode
     hft::StrategyEngine strategy_engine(*feed_to_strategy_queue, *strategy_to_exec_queue);
-    hft::ExecutionGateway execution_gateway(*strategy_to_exec_queue);
+    
+#ifdef USE_DPDK
+    hft::ExecutionGateway execution_gateway(*strategy_to_exec_queue, &dpdk_poller);
+#else
+    hft::ExecutionGateway execution_gateway(*strategy_to_exec_queue, nullptr);
+#endif
 
     execution_gateway.start();
     strategy_engine.start();

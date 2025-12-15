@@ -132,4 +132,42 @@ namespace hft::network {
 #endif
     }
 
+    void DPDKPoller::send(const uint8_t* data, uint16_t len) {
+#ifdef USE_DPDK
+        struct rte_mbuf *mbuf = rte_pktmbuf_alloc(mbuf_pool_);
+        if (unlikely(mbuf == nullptr)) {
+            return;
+        }
+
+        // 1. Prepend Headers (Ethernet + IP + UDP)
+        // For this demo, we will just construct a dummy Ethernet frame to ensure it leaves the NIC.
+        // In a real HFT system, you would use a pre-calculated template (Zero-Copy).
+        
+        size_t header_len = sizeof(struct rte_ether_hdr) + sizeof(struct rte_ipv4_hdr) + sizeof(struct rte_udp_hdr);
+        size_t total_len = header_len + len;
+
+        // Append data to mbuf
+        char *payload = rte_pktmbuf_append(mbuf, total_len);
+        if (unlikely(payload == nullptr)) {
+            rte_pktmbuf_free(mbuf);
+            return;
+        }
+
+        // Fill Headers (Dummy values for benchmark)
+        struct rte_ether_hdr *eth_hdr = (struct rte_ether_hdr *)payload;
+        eth_hdr->ether_type = rte_cpu_to_be_16(RTE_ETHER_TYPE_IPV4);
+        
+        // Copy payload after headers
+        rte_memcpy(payload + header_len, data, len);
+
+        // Send
+        uint16_t nb_tx = rte_eth_tx_burst(port_id_, 0, &mbuf, 1);
+        
+        // Free if not sent
+        if (unlikely(nb_tx < 1)) {
+            rte_pktmbuf_free(mbuf);
+        }
+#endif
+    }
+
 }
