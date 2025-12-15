@@ -14,8 +14,27 @@ fi
 echo "[1/3] Installing Dependencies..."
 dnf update -y
 dnf groupinstall "Development Tools" -y
-dnf install -y cmake git ethtool
-dnf install -y dpdk dpdk-devel dpdk-tools
+dnf install -y cmake git ethtool wget tar kernel-devel numactl-devel python3-pip openssl-devel
+
+# Install Meson and Ninja for building DPDK
+pip3 install meson ninja pyelftools
+
+# Build DPDK from source (since it's not in AL2023 repos)
+echo "Building DPDK from source..."
+cd /usr/src
+if [ ! -d "dpdk-23.11" ]; then
+    wget https://fast.dpdk.org/rel/dpdk-23.11.tar.xz
+    tar -xf dpdk-23.11.tar.xz
+    cd dpdk-23.11
+    meson setup build -Dexamples=helloworld
+    ninja -C build
+    ninja -C build install
+    ldconfig
+    echo "DPDK Installed Successfully"
+else
+    echo "DPDK source already exists, skipping download."
+fi
+cd -
 
 # 2. Configure Kernel Tuning (GRUB)
 echo "[2/3] Configuring Kernel Parameters..."
