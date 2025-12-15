@@ -39,6 +39,12 @@ int main(int argc, char** argv) {
         argc -= parsed_args;
         argv += parsed_args;
     }
+    
+    // Debug: Print remaining args
+    std::cout << "[Debug] Remaining args: " << argc << std::endl;
+    for(int i=0; i<argc; ++i) {
+        std::cout << "argv[" << i << "]: " << argv[i] << std::endl;
+    }
 #endif
 
     // Calibrate TSC for accurate timing on this specific AWS instance
