@@ -13,6 +13,7 @@ A high-performance, low-latency trading engine simulation designed to process ma
 | **Median Latency** | **13.33 ns** | Cache-Hot Path |
 | **Average Latency** | **85.48 ns** | Consistent Sub-Microsecond |
 | **Max Latency** | **~2.8 ms** | OS Scheduler / Cache Misses |
+| **Throughput** | ~**4M** msg/s | nice |
 
 ## Trading Performance (v1.1 Simulation)
 
