@@ -61,14 +61,16 @@ int main(int argc, char** argv) {
     execution_gateway.start();
     strategy_engine.start();
 
-#ifndef USE_DPDK
-    // Standard Mode: Use WebSocket Feed Handler
+    // HYBRID MODE: Use WebSocket Feed Handler (Kernel Ingest) + DPDK (Ready for Egress)
     hft::CoinbaseFeedHandler feed_handler(*feed_to_strategy_queue, true);
     feed_handler.start();
-#else
-    // DPDK Mode: Use UDP Feed Handler (Driven by Poller)
-    hft::CoinbaseUDPHandler udp_handler(*feed_to_strategy_queue);
-#endif
+
+    /* 
+    // UDP Handler is disabled for now until we have a UDP source
+    #ifdef USE_DPDK
+        hft::CoinbaseUDPHandler udp_handler(*feed_to_strategy_queue);
+    #endif 
+    */
 
     // Run for specified duration (default 60s)
     int duration = 60;
@@ -80,13 +82,10 @@ int main(int argc, char** argv) {
     std::cout << "Running live trading engine for " << duration << " seconds..." << std::endl;
     
 #ifdef USE_DPDK
-    // In DPDK mode, the main thread becomes the poller
-    // We poll for packets and pass them to the strategy
-    // Note: In a real HFT system, we would have a dedicated core for this.
-    // Here we use the main thread for simplicity in this demo.
+    // In Hybrid Mode, we might still want to initialize DPDK for Egress (sending orders),
+    // but we don't need to poll for Ingest packets on the main thread if we are using WebSockets.
     
-    std::cout << "[DPDK] Starting Polling Loop on Main Thread..." << std::endl;
-    dpdk_poller.start();
+    std::cout << "[Hybrid] DPDK Initialized. WebSocket Feed Running. Main thread waiting..." << std::endl;
     
     auto start_time = std::chrono::steady_clock::now();
     while (keep_running) {
@@ -96,10 +95,8 @@ int main(int argc, char** argv) {
             break;
         }
         
-        dpdk_poller.poll([&](const uint8_t* data, uint16_t len) {
-            // Pass UDP payload to the UDP Handler
-            udp_handler.on_packet(data, len);
-        });
+        // Sleep to save CPU on the main thread (Feed Handler and Strategy are on pinned cores)
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 #else
     // Standard Mode (WebSocket)
