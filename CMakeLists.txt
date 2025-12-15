@@ -22,7 +22,7 @@ include_directories(include)
 
 # Dependencies
 find_package(Threads REQUIRED)
-find_package(fmt REQUIRED)
+# find_package(fmt REQUIRED) - Replaced with FetchContent
 find_package(OpenSSL REQUIRED)
 find_package(ZLIB REQUIRED)
 find_package(PkgConfig REQUIRED)
@@ -45,6 +45,14 @@ else()
 endif()
 
 include(FetchContent)
+
+# fmt
+FetchContent_Declare(
+  fmt
+  GIT_REPOSITORY https://github.com/fmtlib/fmt.git
+  GIT_TAG        10.2.1
+)
+FetchContent_MakeAvailable(fmt)
 
 # simdjson
 FetchContent_Declare(
