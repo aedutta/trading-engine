@@ -5,7 +5,12 @@
 #include <thread>
 #include <chrono>
 
-int main() {
+int main(int argc, char* argv[]) {
+    int duration = 30;
+    if (argc > 1) {
+        duration = std::atoi(argv[1]);
+    }
+
     std::cout << "Starting Coinbase Feed Handler Test..." << std::endl;
 
     // Create a RingBuffer
@@ -17,10 +22,10 @@ int main() {
     // Start the handler
     handler.start();
 
-    std::cout << "Handler started. Running for 30 seconds..." << std::endl;
+    std::cout << "Handler started. Running for " << duration << " seconds..." << std::endl;
 
     // Let it run for a while to see if it connects and receives data
-    std::this_thread::sleep_for(std::chrono::seconds(30));
+    std::this_thread::sleep_for(std::chrono::seconds(duration));
 
     std::cout << "Stopping handler..." << std::endl;
     handler.stop();

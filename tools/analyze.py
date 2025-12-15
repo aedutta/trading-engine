@@ -43,8 +43,12 @@ def print_histogram(data, bins=20):
 
 def main():
     filename = "strategy_latencies.csv"
+    title = "HFT Engine Latency Report"
+    
     if len(sys.argv) > 1:
         filename = sys.argv[1]
+    if len(sys.argv) > 2:
+        title = sys.argv[2]
         
     try:
         with open(filename, 'r') as f:
@@ -61,7 +65,7 @@ def main():
         return
 
     if not data:
-        print("No data found.")
+        print(f"No data found in {filename}.")
         return
 
     data.sort()
@@ -75,7 +79,7 @@ def main():
     max_val = data[-1]
     
     print("\n" + "="*40)
-    print(f"  HFT Engine Latency Report")
+    print(f"  {title}")
     print("="*40)
     print(f"  Samples : {n:,}")
     print(f"  Min     : {min_val:10.2f} ns")
@@ -88,69 +92,70 @@ def main():
     
     print_histogram(data)
 
-    # Strategy Performance Analysis
-    trades_file = "trades.csv"
-    trades = []
-    try:
-        with open(trades_file, 'r') as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                trades.append(row)
-    except FileNotFoundError:
-        pass
+    # Strategy Performance Analysis (Only if analyzing strategy latencies)
+    if "strategy" in filename:
+        trades_file = "trades.csv"
+        trades = []
+        try:
+            with open(trades_file, 'r') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    trades.append(row)
+        except FileNotFoundError:
+            pass
 
-    print("\n" + "="*40)
-    print(f"  Strategy Performance (Simulation)")
-    print("="*40)
-    
-    if not trades:
-        print(f"  Total Trades : 0")
-        print(f"  Net PnL      : 0.00 USDT")
+        print("\n" + "="*40)
+        print(f"  Strategy Performance (Simulation)")
         print("="*40)
-        return
+        
+        if not trades:
+            print(f"  Total Trades : 0")
+            print(f"  Net PnL      : 0.00 USDT")
+            print("="*40)
+            return
 
-    cash = 0.0
-    position = 0.0
-    volume = 0.0
-    
-    # Constants (assuming 1e8 scaling)
-    SCALE = 1e8
-    
-    last_price = 0.0
-    
-    for t in trades:
-        price = float(t['price']) / SCALE
-        qty = float(t['quantity']) / SCALE
-        is_buy = int(t['is_buy']) == 1
+        cash = 0.0
+        position = 0.0
+        volume = 0.0
         
-        last_price = price
-        volume += (price * qty)
+        # Constants (assuming 1e8 scaling)
+        SCALE = 1e8
         
-        if is_buy:
-            position += qty
-            cash -= price * qty
-        else:
-            position -= qty
-            cash += price * qty
+        last_price = 0.0
+        
+        for t in trades:
+            price = float(t['price']) / SCALE
+            qty = float(t['quantity']) / SCALE
+            is_buy = int(t['is_buy']) == 1
             
-    # Mark to Market
-    unrealized_pnl = position * last_price
-    total_pnl = cash + unrealized_pnl
-    
-    # Time Analysis
-    if len(trades) > 1:
-        start_ts = float(trades[0]['timestamp'])
-        end_ts = float(trades[-1]['timestamp'])
-        # Assuming 3.0 GHz
-        duration_sec = (end_ts - start_ts) / 3000000000.0
-        print(f"  Duration     : {duration_sec:.2f} seconds")
-        print(f"  Trades/Sec   : {len(trades)/duration_sec:.2f}")
+            last_price = price
+            volume += (price * qty)
+            
+            if is_buy:
+                position += qty
+                cash -= price * qty
+            else:
+                position -= qty
+                cash += price * qty
+                
+        # Mark to Market
+        unrealized_pnl = position * last_price
+        total_pnl = cash + unrealized_pnl
+        
+        # Time Analysis
+        if len(trades) > 1:
+            start_ts = float(trades[0]['timestamp'])
+            end_ts = float(trades[-1]['timestamp'])
+            # Assuming 3.0 GHz
+            duration_sec = (end_ts - start_ts) / 3000000000.0
+            print(f"  Duration     : {duration_sec:.2f} seconds")
+            print(f"  Trades/Sec   : {len(trades)/duration_sec:.2f}")
 
-    print(f"  Total Trades : {len(trades)}")
-    print(f"  Volume       : {volume:,.2f} USDT")
-    print(f"  Position     : {position:.4f} BTC")
-    print(f"  Net PnL      : {total_pnl:+.4f} USDT")
-    print("="*40)
+        print(f"  Total Trades : {len(trades)}")
+        print(f"  Volume       : {volume:,.2f} USDT")
+        print(f"  Position     : {position:.4f} BTC")
+        print(f"  Net PnL      : {total_pnl:+.4f} USDT")
+        print("="*40)
 
 if __name__ == "__main__":
     main()

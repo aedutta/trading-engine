@@ -57,6 +57,39 @@ A high-performance, low-latency trading engine simulation designed to process ma
 
 ### 7. CPU Pinning & Isolation
 -   **Technique:** Pins threads to specific CPU cores using `pthread_setaffinity_np`.
+-   **Configuration (AWS c7i.large):**
+    -   **Core 0:** OS Interrupts, Network I/O (Feed Handler, Execution Gateway).
+    -   **Core 1:** Isolated Strategy Engine (`isolcpus=1`).
+-   **Why:** Prevents the OS scheduler from preempting the critical strategy thread, ensuring deterministic execution times.
+
+## ☁️ Production Migration (AWS)
+
+This project is optimized for **AWS c7i.large** instances in `us-east-1`.
+
+### Infrastructure Setup
+1.  **Instance:** `c7i.large` (Intel Sapphire Rapids).
+2.  **OS:** Amazon Linux 2023.
+3.  **Region:** `us-east-1` (Target AZs: `use1-az4` or `use1-az6` for Coinbase).
+4.  **Network:** Enable **ENA Express** on the ENI.
+
+### Optimization Script
+Run the included script to tune the OS for low latency:
+```bash
+sudo ./scripts/optimize_aws.sh
+```
+This script handles:
+-   Disabling interrupt coalescing (`ethtool`).
+-   Enabling busy polling (`sysctl`).
+-   Verifying `isolcpus` and `chrony` status.
+-   Setting CPU governor to `performance`.
+
+### Build for Production
+Compile with Sapphire Rapids optimizations:
+```bash
+mkdir build_prod && cd build_prod
+cmake -DCMAKE_BUILD_TYPE=Production ..
+make -j$(nproc)
+```
 -   **Why:** Maximizes L1/L2 cache hits and minimizes context switching overhead from the OS scheduler.
 
 ### 8. SIMD-Accelerated JSON Parsing

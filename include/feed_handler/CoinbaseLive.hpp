@@ -18,7 +18,6 @@
 #include <thread>
 #include <chrono>
 #include <cstring> // For optimization (memcmp)
-#include <emmintrin.h> // For _mm_pause
 #include <fstream>
 
 namespace hft {
@@ -228,7 +227,7 @@ namespace hft {
 
             // 10. Buffer Push (Spin-wait)
             while (!output_buffer_.push(t)) {
-                _mm_pause(); // Intel intrinsic for spin-loop hint
+                utils::cpu_relax(); // Intel intrinsic for spin-loop hint
             }
         }
 

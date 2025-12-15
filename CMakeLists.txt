@@ -10,7 +10,12 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 if(MSVC)
     add_compile_options(/O2 /Oi /Ot)
 else()
-    add_compile_options(-O3 -march=native -mtune=native -Wall -Wextra -pthread)
+    # Production build for AWS c7i.large (Sapphire Rapids)
+    if(CMAKE_BUILD_TYPE STREQUAL "Production")
+        add_compile_options(-O3 -march=sapphirerapids -mtune=sapphirerapids -Wall -Wextra -pthread -Wno-volatile)
+    else()
+        add_compile_options(-O3 -march=native -mtune=native -Wall -Wextra -pthread -Wno-volatile)
+    endif()
 endif()
 
 include_directories(include)
@@ -20,6 +25,24 @@ find_package(Threads REQUIRED)
 find_package(fmt REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(ZLIB REQUIRED)
+find_package(PkgConfig REQUIRED)
+
+# DPDK Support
+option(ENABLE_DPDK "Enable DPDK support" ON)
+
+if(ENABLE_DPDK)
+    pkg_check_modules(DPDK libdpdk)
+    if(DPDK_FOUND)
+        message(STATUS "DPDK found. Enabling kernel bypass features.")
+        add_definitions(-DUSE_DPDK)
+        include_directories(${DPDK_INCLUDE_DIRS})
+        link_directories(${DPDK_LIBRARY_DIRS})
+    else()
+        message(WARNING "DPDK not found. Falling back to standard networking.")
+    endif()
+else()
+    message(STATUS "DPDK disabled by user.")
+endif()
 
 include(FetchContent)
 
@@ -47,7 +70,14 @@ add_executable(hft_engine
     src/feed_handler/FeedHandler.cpp
     src/strategy/StrategyEngine.cpp
     src/execution/ExecutionGateway.cpp
+    src/network/DPDKPoller.cpp
 )
+
+if(DPDK_FOUND)
+    target_link_libraries(hft_engine PRIVATE ${DPDK_LIBRARIES})
+    # Explicitly link ENA driver for AWS
+    target_link_libraries(hft_engine PRIVATE rte_net_ena)
+endif()
 
 # Link libraries
 target_link_libraries(hft_engine PRIVATE 
@@ -68,6 +98,21 @@ add_executable(replay_engine
 )
 
 target_link_libraries(replay_engine PRIVATE 
+    Threads::Threads
+    fmt::fmt
+    simdjson
+    ixwebsocket::ixwebsocket
+    OpenSSL::SSL OpenSSL::Crypto
+    ZLIB::ZLIB
+)
+
+# Integration Tests
+add_executable(integration_feed
+    tests/integration_feed.cpp
+    src/feed_handler/FeedHandler.cpp
+)
+
+target_link_libraries(integration_feed PRIVATE 
     Threads::Threads
     fmt::fmt
     simdjson
