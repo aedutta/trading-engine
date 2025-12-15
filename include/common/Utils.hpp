@@ -6,6 +6,7 @@
 #include <pthread.h>
 #include <sched.h>
 #include <cstring>
+#include <cstdio>
 
 namespace hft::constants {
     constexpr int64_t PRICE_SCALE = 100000000; // 1e8 for Satoshis
@@ -49,4 +50,31 @@ namespace hft::utils {
         return ((uint64_t)hi << 32) | lo;
     }
 
+    // Simple Latency Recorder
+    struct LatencyRecorder {
+        std::vector<uint64_t> latencies;
+        
+        LatencyRecorder() {
+            latencies.reserve(1000000);
+        }
+
+        void record(uint64_t start, uint64_t end) {
+            if (end > start) {
+                latencies.push_back(end - start);
+            }
+        }
+
+        void save_to_csv(const std::string& filename) {
+            FILE* f = fopen(filename.c_str(), "w");
+            if (!f) return;
+            
+            for (uint64_t lat : latencies) {
+                // Convert cycles to nanoseconds
+                double ns = (double)lat / CYCLES_PER_NS;
+                fprintf(f, "%.2f\n", ns);
+            }
+            fclose(f);
+            std::cout << "Saved " << latencies.size() << " latency samples to " << filename << std::endl;
+        }
+    };
 }

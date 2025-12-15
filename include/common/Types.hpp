@@ -25,6 +25,8 @@ namespace hft {
         int64_t quantity; // Fixed point: Satoshis (1e-8)
         uint64_t symbol;  // Encoded symbol (e.g. "BTCUSDT" as 8 bytes)
         bool is_bid;
+        bool is_trade;    // True = Trade, False = Depth Update
+        bool is_snapshot; // True = Snapshot (Clear book), False = Update
         // Implicit padding to 64 bytes
     };
 

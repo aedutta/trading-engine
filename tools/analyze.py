@@ -42,7 +42,7 @@ def print_histogram(data, bins=20):
     print(f"Outliers (> {max_val:.2f} ns): {outliers}")
 
 def main():
-    filename = "latencies.csv"
+    filename = "strategy_latencies.csv"
     if len(sys.argv) > 1:
         filename = sys.argv[1]
         
@@ -87,6 +87,70 @@ def main():
     print("="*40)
     
     print_histogram(data)
+
+    # Strategy Performance Analysis
+    trades_file = "trades.csv"
+    trades = []
+    try:
+        with open(trades_file, 'r') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                trades.append(row)
+    except FileNotFoundError:
+        pass
+
+    print("\n" + "="*40)
+    print(f"  Strategy Performance (Simulation)")
+    print("="*40)
+    
+    if not trades:
+        print(f"  Total Trades : 0")
+        print(f"  Net PnL      : 0.00 USDT")
+        print("="*40)
+        return
+
+    cash = 0.0
+    position = 0.0
+    volume = 0.0
+    
+    # Constants (assuming 1e8 scaling)
+    SCALE = 1e8
+    
+    last_price = 0.0
+    
+    for t in trades:
+        price = float(t['price']) / SCALE
+        qty = float(t['quantity']) / SCALE
+        is_buy = int(t['is_buy']) == 1
+        
+        last_price = price
+        volume += (price * qty)
+        
+        if is_buy:
+            position += qty
+            cash -= price * qty
+        else:
+            position -= qty
+            cash += price * qty
+            
+    # Mark to Market
+    unrealized_pnl = position * last_price
+    total_pnl = cash + unrealized_pnl
+    
+    # Time Analysis
+    if len(trades) > 1:
+        start_ts = float(trades[0]['timestamp'])
+        end_ts = float(trades[-1]['timestamp'])
+        # Assuming 3.0 GHz
+        duration_sec = (end_ts - start_ts) / 3000000000.0
+        print(f"  Duration     : {duration_sec:.2f} seconds")
+        print(f"  Trades/Sec   : {len(trades)/duration_sec:.2f}")
+
+    print(f"  Total Trades : {len(trades)}")
+    print(f"  Volume       : {volume:,.2f} USDT")
+    print(f"  Position     : {position:.4f} BTC")
+    print(f"  Net PnL      : {total_pnl:+.4f} USDT")
+    print("="*40)
 
 if __name__ == "__main__":
     main()

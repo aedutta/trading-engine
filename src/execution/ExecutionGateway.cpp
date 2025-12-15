@@ -10,6 +10,7 @@ namespace hft {
     ExecutionGateway::ExecutionGateway(RingBuffer<Order, constants::RING_BUFFER_SIZE>& input_buffer)
         : input_buffer_(input_buffer) {
             latencies_.reserve(1000000); 
+            executed_orders_.reserve(1000000);
         }
 
     // Function: start
@@ -31,13 +32,24 @@ namespace hft {
             thread_.join();
         }
 
-        std::ofstream file("latencies.csv");
+        std::ofstream file("execution_latencies.csv");
         file << "latency_ns\n"; 
         for (const auto& lat : latencies_) {
             // Convert cycles to nanoseconds
             file << (lat / utils::CYCLES_PER_NS) << "\n";
         }
         file.close();
+
+        std::ofstream trades_file("trades.csv");
+        trades_file << "id,timestamp,price,quantity,is_buy\n";
+        for (const auto& order : executed_orders_) {
+            trades_file << order.id << "," 
+                        << order.origin_timestamp << "," 
+                        << order.price << "," 
+                        << order.quantity << "," 
+                        << (order.is_buy ? 1 : 0) << "\n";
+        }
+        trades_file.close();
     }
 
     // Function: run
@@ -55,7 +67,14 @@ namespace hft {
                 // Note: order.origin_timestamp must also be captured via rdtsc() in FeedHandler/Strategy
                 // Currently it is likely still using chrono. We need to update FeedHandler/Strategy too.
                 uint64_t latency = now - order.origin_timestamp;
-                latencies_.push_back(latency);
+                
+                if (latencies_.size() < latencies_.capacity()) {
+                    latencies_.push_back(latency);
+                }
+                
+                if (executed_orders_.size() < executed_orders_.capacity()) {
+                    executed_orders_.push_back(order);
+                }
             } else {
                 _mm_pause();
             }

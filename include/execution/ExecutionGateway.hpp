@@ -33,6 +33,7 @@ namespace hft {
         std::atomic<bool> running_{false};
         std::thread thread_;
         std::vector<uint64_t> latencies_; 
+        std::vector<Order> executed_orders_;
     };
 
 }

@@ -3,6 +3,7 @@
 #include "common/RingBuffer.hpp"
 #include "common/Types.hpp"
 #include "common/Utils.hpp"
+#include "simulation/MatchingEngine.hpp"
 #include <atomic>
 #include <thread>
 
@@ -29,10 +30,17 @@ namespace hft {
     private:
         void run();
 
+        enum class State { FLAT, LONG, SHORT };
+        State current_state_ = State::FLAT;
+
         RingBuffer<BinaryTick, constants::RING_BUFFER_SIZE>& input_buffer_;
         RingBuffer<Order, constants::RING_BUFFER_SIZE>& output_buffer_;
         std::atomic<bool> running_{false};
         std::thread thread_;
+        MatchingEngine matching_engine_;
+
+        // Benchmarking
+        utils::LatencyRecorder latency_recorder_;
     };
 
 }

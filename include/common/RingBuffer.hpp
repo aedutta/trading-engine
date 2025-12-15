@@ -57,6 +57,12 @@ namespace hft {
             tail.store((current_tail + 1) & (Size - 1), std::memory_order_release);
             return true;
         }
+
+        size_t size() const {
+            size_t current_head = head.load(std::memory_order_relaxed);
+            size_t current_tail = tail.load(std::memory_order_relaxed);
+            return (current_head - current_tail) & (Size - 1);
+        }
     };
 
 }

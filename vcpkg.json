@@ -4,6 +4,7 @@
   "dependencies": [
     "simdjson",
     "uwebsockets",
+    "curl",
     "fmt",
     "boost-lockfree",
     "boost-system"
