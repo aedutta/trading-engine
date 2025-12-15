@@ -2,60 +2,70 @@
 
 A high-performance, low-latency trading engine simulation designed to process market data and execute strategies with sub-microsecond latency. This project demonstrates advanced C++ optimization techniques used in HFT firms, including lock-free data structures, zero-copy I/O, and kernel-level tuning.
 
-## Benchmarks (v1.1 Replay)
+## Benchmarks (v2.0 Hybrid Architecture - AWS c7i.large)
 
-**Environment:** Linux (WSL2), GCC 11+, C++20
-**Dataset:** Captured Coinbase L2 Data (BTC-USD)
+**Environment:** AWS c7i.large (Intel Sapphire Rapids), Amazon Linux 2023
+**Architecture:** Hybrid Kernel-Bypass (Kernel Ingest + DPDK Egress)
+**Duration:** 10 Minutes Live Trading
 
 | Metric | Result | Notes |
 | :--- | :--- | :--- |
-| **Min Latency** | **11.33 ns** | Pure Integer Logic |
-| **Median Latency** | **13.33 ns** | Cache-Hot Path |
-| **Average Latency** | **85.48 ns** | Consistent Sub-Microsecond |
-| **Max Latency** | **~2.8 ms** | OS Scheduler / Cache Misses |
-| **Throughput** | ~**4M** msg/s | nice |
+| **Min Strategy Latency** | **18.33 ns** | Pure Integer Logic (Tick-to-Signal) |
+| **Median Strategy Latency** | **28.33 ns** | Cache-Hot Path |
+| **99% Strategy Latency** | **181.67 ns** | Consistent Sub-Microsecond |
+| **Execution Latency** | **~59 µs** | Tick-to-Wire (Strategy + DPDK TX) |
+| **Throughput** | ~**100k** msg/s | Live Coinbase Feed |
 
-## Trading Performance (v1.1 Simulation)
+## Trading Performance (v2.0 Live)
 
-**Session:** 22 seconds of captured Coinbase L2 data (BTC-USD).
+**Session:** 10 Minutes Live Trading (BTC-USD)
 
 | Metric | Value |
 | :--- | :--- |
-| **Net PnL** | **+2.0147 USDT** |
-| **Total Trades** | 157 |
-| **Volume Traded** | 138,210 USDT |
-| **Return on Vol** | ~1.4 bps |
+| **Net PnL** | **+7.74 USDT** |
+| **Total Trades** | 471 |
+| **Volume Traded** | 422,361 USDT |
+| **Return on Vol** | ~1.8 bps |
 
 ## 🚀 Key Optimizations
 
-### 1. Deterministic Replay Engine
+### 1. Hybrid Kernel-Bypass Architecture
+-   **What:** Combines the robustness of the Linux Kernel for TCP/TLS Ingest with the raw speed of DPDK for UDP Egress.
+-   **Why:** Solves the "Cloud Connectivity Paradox" where exchanges provide TCP feeds (hard for DPDK) but execution requires UDP speed.
+-   **Implementation:**
+    -   **Ingest (Core 0):** Kernel TCP with `SO_BUSY_POLL` (50µs) to minimize interrupt latency.
+    -   **Bridge:** Hugepage-backed Lock-Free Ring Buffer (`mmap` + `MAP_HUGETLB`).
+    -   **Strategy (Core 1):** Isolated User-Space Logic (`isolcpus=1`).
+    -   **Egress:** DPDK PMD (Poll Mode Driver) for zero-copy order transmission.
+
+### 2. Deterministic Replay Engine
 -   **What:** Captures live Coinbase WebSocket L2 data to `market_data.bin` and replays it with nanosecond-precision timing.
 -   **Why:** Allows for realistic stress-testing of the system using actual market data inter-arrival times, rather than synthetic benchmarks.
 
-### 2. Integer-Only Strategy Logic & Arithmetic Latency
+### 3. Integer-Only Strategy Logic & Arithmetic Latency
 -   **Technique:** All strategy calculations (OFI Signal, EWMA Smoothing, Fair Price) use `int64_t` fixed-point arithmetic. Removed all floating-point division from the hot path.
 -   **Why:** Floating-point division is one of the slowest CPU instructions (~20-50 cycles). Keeping prices in Satoshis (`int64_t`) allows the strategy to use simple integer comparisons (~1 cycle), deferring expensive conversions until after the trade is executed.
 
-### 3. Lock-Free Ring Buffer (SPSC)
+### 4. Lock-Free Ring Buffer (SPSC)
 -   **Technique:** Single-Producer Single-Consumer queue using `std::atomic` with Acquire/Release semantics.
 -   **Why:** Zero lock contention between threads. `std::mutex` causes context switches (microseconds), while atomics allow threads to communicate without sleeping.
 
-### 4. Zero-Copy Data Ingestion (Memory Mapped I/O)
+### 5. Zero-Copy Data Ingestion (Memory Mapped I/O)
 -   **Technique:** Replaced `std::ifstream` and `std::vector` with `mmap` and `std::span`.
 -   **Why:** Standard file I/O involves copying data from disk → kernel buffer → user buffer → heap memory. `mmap` maps the file directly into the process's virtual address space, allowing the OS to load pages on demand (Demand Paging) with **zero redundant copies**.
 -   **Impact:** Reduces data loading time from minutes to microseconds and eliminates heap allocation overhead.
 
-### 5. CPU Pipeline Efficiency
+### 6. CPU Pipeline Efficiency
 -   **Technique:** Used `_mm_pause()` intrinsic instead of `std::this_thread::yield()` in busy-wait loops.
 -   **Why:** `yield()` triggers a context switch. `_mm_pause()` keeps the thread active but hints the CPU pipeline to pause for a few cycles, reducing power consumption and improving reaction latency to nanoseconds when new data arrives.
 
-### 6. Kernel-Level Tuning
+### 7. Kernel-Level Tuning
 -   **Technique:** Applied `madvise(MADV_SEQUENTIAL)` and `MADV_HUGEPAGE`.
 -   **Why:**
     -   **Sequential Hint:** Triggers aggressive OS read-ahead, pre-loading data pages into RAM before the application requests them.
     -   **Huge Pages:** Reduces TLB (Translation Lookaside Buffer) misses by mapping memory in 2MB chunks instead of 4KB.
 
-### 7. CPU Pinning & Isolation
+### 8. CPU Pinning & Isolation
 -   **Technique:** Pins threads to specific CPU cores using `pthread_setaffinity_np`.
 -   **Configuration (AWS c7i.large):**
     -   **Core 0:** OS Interrupts, Network I/O (Feed Handler, Execution Gateway).
@@ -75,29 +85,31 @@ This project is optimized for **AWS c7i.large** instances in `us-east-1`.
 ### Optimization Script
 Run the included script to tune the OS for low latency:
 ```bash
-sudo ./scripts/optimize_aws.sh
+sudo ./scripts/setup_aws_network.sh
 ```
 This script handles:
 -   Disabling interrupt coalescing (`ethtool`).
 -   Enabling busy polling (`sysctl`).
 -   Verifying `isolcpus` and `chrony` status.
 -   Setting CPU governor to `performance`.
+-   Binding Secondary ENI to DPDK (`vfio-pci`).
 
 ### Build for Production
-Compile with Sapphire Rapids optimizations:
+Compile with Sapphire Rapids optimizations and DPDK:
 ```bash
-mkdir build_prod && cd build_prod
-cmake -DCMAKE_BUILD_TYPE=Production ..
+mkdir build && cd build
+cmake -DUSE_DPDK=ON ..
 make -j$(nproc)
 ```
 -   **Why:** Maximizes L1/L2 cache hits and minimizes context switching overhead from the OS scheduler.
 
-### 8. SIMD-Accelerated JSON Parsing
+### 9. SIMD-Accelerated JSON Parsing
 -   **Technique:** Uses `simdjson` library for parsing WebSocket messages.
 -   **Why:** Parses JSON at gigabytes per second using AVX2/AVX-512 instructions, significantly reducing the "Feed Handler" latency bottleneck.
 
-### 9. Cache-Optimized Data Structures
+### 10. Cache-Optimized Data Structures
 -   **Technique:** `DenseOrderBook` uses flat `std::vector` arrays instead of tree-based maps, and `BinaryTick` is aligned to 64 bytes (`alignas(64)`).
+
 -   **Why:** Prevents "False Sharing" between CPU cores and ensures prefetcher-friendly memory access patterns.
 
 ## Strategy & Execution Logic

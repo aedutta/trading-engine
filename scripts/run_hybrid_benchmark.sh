@@ -1,11 +1,11 @@
 #!/bin/bash
 set -e
 
-DURATION=600 # 10 Minutes
+DURATION=${1:-600} # Default to 600s (10 Minutes) if not provided
 BUILD_DIR="build"
 
 echo "--------------------------------------------------"
-echo "  HFT Hybrid Engine Benchmark (10 Minutes)"
+echo "  HFT Hybrid Engine Benchmark ($DURATION seconds)"
 echo "--------------------------------------------------"
 
 # 1. Build

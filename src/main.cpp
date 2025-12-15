@@ -122,6 +122,9 @@ int main(int argc, char** argv) {
     // In Hybrid Mode, we might still want to initialize DPDK for Egress (sending orders),
     // but we don't need to poll for Ingest packets on the main thread if we are using WebSockets.
     
+    // Start the DPDK Port for TX
+    dpdk_poller.start();
+    
     std::cout << "[Hybrid] DPDK Initialized. WebSocket Feed Running. Main thread waiting..." << std::endl;
     
     auto start_time = std::chrono::steady_clock::now();
