@@ -73,7 +73,8 @@ int main(int argc, char** argv) {
     // Run for specified duration (default 60s)
     int duration = 60;
     if (argc > 1) {
-        duration = std::atoi(argv[1]);
+        // The duration is the last argument passed
+        duration = std::atoi(argv[argc - 1]);
     }
 
     std::cout << "Running live trading engine for " << duration << " seconds..." << std::endl;
