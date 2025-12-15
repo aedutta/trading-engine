@@ -31,23 +31,39 @@ The engine implements a **Market Making** strategy driven by **Order Flow Imbala
 ### 1. Signal Generation (OFI)
 
 We calculate the imbalance between Bid and Ask volume changes at the top of the book:
+
+<div align="center">
+
 $`\text{OFI}_t = (\mathrm{Vol}^{\mathrm{Bid}}_t - \mathrm{Vol}^{\mathrm{Bid}}_{t-1}) - (\mathrm{Vol}^{\mathrm{Ask}}_t - \mathrm{Vol}^{\mathrm{Ask}}_{t-1})`$
+
+</div>
 
 ### 2. Signal Smoothing (EWMA)
 
 The raw OFI is noisy, so we apply an Exponentially Weighted Moving Average using **integer-only arithmetic**:
+
+<div align="center">
+
 $`\text{Signal}_t = \alpha \cdot \text{OFI}_t + (1 - \alpha)\cdot \text{Signal}_{t-1}`$
+
+</div>
 
 *Implemented via bit-shifting (`>> 10`) to avoid floating-point latency.*
 
 ### 3. Fair Price & Execution
 
 We quote passively around a *Fair Price* adjusted for signal strength and inventory risk:
+
+<div align="center">
+
 $`P_{\text{fair}} = P_{\text{mid}} + \frac{\text{Signal}_t}{\kappa} - \gamma \cdot \text{Position}`$
+
+</div>
 
 Where:
 - $\kappa$: Signal impact divisor  
 - $\gamma$: Inventory aversion parameter
+
 
 
 ## �🚀 Key Optimizations
