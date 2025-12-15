@@ -22,12 +22,15 @@ modprobe vfio-pci
 echo "vfio-pci loaded."
 
 # 3. Identify Secondary Interface
-# We assume eth0 is management, and the next available interface is for DPDK.
-# In AWS, this is usually eth1 if attached.
-DPDK_IFACE="eth1"
+# Automatically detect the interface that is NOT the default management interface
+MGMT_IFACE=$(ip route show default | awk '/default/ {print $5}')
+DPDK_IFACE=$(ip -o link show | awk -F': ' '{print $2}' | grep -v "lo" | grep -v "$MGMT_IFACE" | head -n 1)
 
-if ! ip link show "$DPDK_IFACE" > /dev/null 2>&1; then
-    echo "Error: Interface $DPDK_IFACE not found. Please attach a second ENI to this instance."
+echo "Management Interface: $MGMT_IFACE"
+echo "DPDK Interface:       $DPDK_IFACE"
+
+if [ -z "$DPDK_IFACE" ]; then
+    echo "Error: No secondary interface found. Please attach a second ENI to this instance."
     exit 1
 fi
 
