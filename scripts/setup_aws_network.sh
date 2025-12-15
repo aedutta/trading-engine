@@ -23,7 +23,7 @@ echo "vfio-pci loaded."
 
 # 3. Identify Secondary Interface
 # Automatically detect the interface that is NOT the default management interface
-MGMT_IFACE=$(ip route show default | awk '/default/ {print $5}')
+MGMT_IFACE=$(ip route show default | awk '/default/ {print $5}' | head -n 1)
 DPDK_IFACE=$(ip -o link show | awk -F': ' '{print $2}' | grep -v "lo" | grep -v "$MGMT_IFACE" | head -n 1)
 
 echo "Management Interface: $MGMT_IFACE"
