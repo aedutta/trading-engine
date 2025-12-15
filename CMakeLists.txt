@@ -103,7 +103,13 @@ add_executable(replay_engine
     src/feed_handler/FeedHandler.cpp
     src/strategy/StrategyEngine.cpp
     src/execution/ExecutionGateway.cpp
+    src/network/DPDKPoller.cpp
 )
+
+if(DPDK_FOUND)
+    target_link_libraries(replay_engine PRIVATE ${DPDK_LIBRARIES})
+    target_link_libraries(replay_engine PRIVATE rte_net_ena)
+endif()
 
 target_link_libraries(replay_engine PRIVATE 
     Threads::Threads
