@@ -28,33 +28,57 @@ A high-performance, low-latency trading engine simulation designed to process ma
 ## Strategy & Execution Logic
 
 The engine implements a **Market Making** strategy driven by **Order Flow Imbalance (OFI)**.
-
 ### 1. Signal Generation (OFI)
-We calculate the imbalance between Bid and Ask volume changes at the top of the book.
+
+We calculate the imbalance between Bid and Ask volume changes at the top of the book:
+
 $$
-\text{OFI}_t =
-(\mathrm{Vol}^{\mathrm{Bid}}_t - \mathrm{Vol}^{\mathrm{Bid}}_{t-1})
+\text{OFI}_t
+=
+\left(
+\mathrm{Vol}^{\mathrm{Bid}}_t - \mathrm{Vol}^{\mathrm{Bid}}_{t-1}
+\right)
 -
-(\mathrm{Vol}^{\mathrm{Ask}}_t - \mathrm{Vol}^{\mathrm{Ask}}_{t-1})
+\left(
+\mathrm{Vol}^{\mathrm{Ask}}_t - \mathrm{Vol}^{\mathrm{Ask}}_{t-1}
+\right)
 $$
 
+---
 
 ### 2. Signal Smoothing (EWMA)
+
 The raw OFI is noisy, so we apply an Exponentially Weighted Moving Average using **integer-only arithmetic**:
+
 $$
-\text{Signal}_t =
-\alpha \cdot \text{OFI}_t +
+\text{Signal}_t
+=
+\alpha \cdot \text{OFI}_t
++
 (1 - \alpha)\cdot \text{Signal}_{t-1}
 $$
 
-*(Implemented via bit-shifting `>> 10` to avoid floating-point latency)*
+*Implemented via bit-shifting (`>> 10`) to avoid floating-point latency.*
+
+---
 
 ### 3. Fair Price & Execution
-We quote passively around a "Fair Price" adjusted for signal strength and inventory risk:
-$$P_{fair} = P_{mid} + \frac{\text{Signal}_t}{\kappa} - (\gamma \cdot \text{Position})$$
+
+We quote passively around a *Fair Price* adjusted for signal strength and inventory risk:
+
+$$
+P_{\text{fair}}
+=
+P_{\text{mid}}
++
+\frac{\text{Signal}_t}{\kappa}
+-
+\gamma \cdot \text{Position}
+$$
+
 Where:
-*   $\kappa$: Signal Impact Divisor
-*   $\gamma$: Inventory Aversion Parameter
+- $\kappa$: Signal impact divisor  
+- $\gamma$: Inventory aversion parameter
 
 ## �🚀 Key Optimizations
 
