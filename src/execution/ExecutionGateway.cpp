@@ -152,8 +152,9 @@ namespace hft {
                 
                 req.body().data = payload_buffer_;
                 req.body().size = payload_len;
-                req.prepare_payload(); // Sets Content-Length
-
+                req.body().more = false;
+                req.set(http::field::content_length, std::to_string(payload_len));
+                
                 // 5. Send
                 try {
                     http::write(*stream_, req);
