@@ -19,29 +19,47 @@
 #include <cstdlib>
 #include <immintrin.h>
 #include <cstring>
+#include <fstream>
+#include "simdjson.h"
 
 namespace hft {
 
     CoinbaseAuth::CoinbaseAuth(const std::string& key_name, const std::string& private_key) {
-        if (!key_name.empty()) {
-            key_name_ = key_name;
-        } else {
-            key_name_ = get_key_name_from_env();
+        // Try loading from file if not provided
+        std::string loaded_key_name = key_name;
+        std::string loaded_private_key = private_key;
+
+        if (loaded_key_name.empty() || loaded_private_key.empty()) {
+            // Try environment variables first
+            if (loaded_key_name.empty()) loaded_key_name = get_key_name_from_env();
+            if (loaded_private_key.empty()) loaded_private_key = get_private_key_from_env();
+
+            // If still empty, try loading from file
+            if (loaded_key_name.empty() || loaded_private_key.empty()) {
+                std::ifstream f("private/cdp_api_key.json");
+                if (f.good()) {
+                    std::cout << "[Auth] Loading keys from private/cdp_api_key.json..." << std::endl;
+                    simdjson::dom::parser parser;
+                    simdjson::dom::element doc;
+                    try {
+                        auto json = parser.load("private/cdp_api_key.json");
+                        loaded_key_name = std::string(json["name"].get_c_str());
+                        loaded_private_key = std::string(json["privateKey"].get_c_str());
+                    } catch (const std::exception& e) {
+                        std::cerr << "[Auth] Failed to parse key file: " << e.what() << std::endl;
+                    }
+                }
+            }
         }
 
+        key_name_ = loaded_key_name;
         if (key_name_.empty()) {
-            std::cerr << "COINBASE_KEY_NAME environment variable not set." << std::endl;
+            std::cerr << "[Auth] Error: COINBASE_KEY_NAME not set and could not be loaded from file." << std::endl;
         }
 
-        std::string key_pem;
-        if (!private_key.empty()) {
-            key_pem = private_key;
-        } else {
-            key_pem = get_private_key_from_env();
-        }
-
+        std::string key_pem = loaded_private_key;
         if (key_pem.empty()) {
-            std::cerr << "COINBASE_PRIVATE_KEY environment variable not set or empty." << std::endl;
+            std::cerr << "[Auth] Error: COINBASE_PRIVATE_KEY not set and could not be loaded from file." << std::endl;
             return;
         }
 

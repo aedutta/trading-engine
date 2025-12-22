@@ -41,7 +41,8 @@ namespace hft::network {
         uint16_t nb_ports = rte_eth_dev_count_avail();
         if (nb_ports == 0) {
             std::cout << "[DPDK] WARNING: No DPDK-compatible ports found. Network ingestion will be disabled." << std::endl;
-            return ret;
+            // Do NOT exit, just return success so the rest of the engine can run
+            return 0; 
         }
 
         // 3. Configure port
