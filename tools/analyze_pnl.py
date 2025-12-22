@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import sys
 import csv
+import os
 
 def main():
     filename = "trades.csv"
@@ -26,8 +27,9 @@ def main():
         with open(filename, 'r') as f:
             reader = csv.DictReader(f)
             for row in reader:
-                price = float(row['price'])
-                qty = float(row['quantity'])
+                # Convert from fixed point (1e8)
+                price = float(row['price']) / 100000000.0
+                qty = float(row['quantity']) / 100000000.0
                 is_buy = int(row['is_buy']) == 1
                 timestamp = row['timestamp']
 
@@ -50,21 +52,21 @@ def main():
         print(f"Error reading CSV: {e}")
         return
 
-    # Mark-to-Market PnL
-    unrealized_pnl = inventory * last_price
-    total_pnl = cash + unrealized_pnl
-
     print("-" * 60)
     print(f"Total Trades: {trades_count}")
     print(f"Total Volume: ${volume:,.2f}")
     print(f"Final Inventory: {inventory:.4f} BTC")
     print(f"Final Cash: ${cash:,.2f}")
+    
+    # Mark to Market
+    mtm_value = inventory * last_price
+    unrealized_pnl = cash + mtm_value
+    
     print(f"Mark-to-Market Price: ${last_price:,.2f}")
     print(f"Unrealized PnL: ${unrealized_pnl:,.2f}")
     print("-" * 60)
-    print(f"TOTAL PnL: ${total_pnl:,.2f}")
+    print(f"TOTAL PnL: ${unrealized_pnl:,.2f}")
     print("-" * 60)
 
 if __name__ == "__main__":
-    import os
     main()

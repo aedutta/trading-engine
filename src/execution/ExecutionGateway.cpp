@@ -65,12 +65,12 @@ namespace hft {
     void ExecutionGateway::connect() {
         try {
             tcp::resolver resolver(ioc_);
-            auto const results = resolver.resolve("api.cdp.coinbase.com", "443");
+            auto const results = resolver.resolve("api.coinbase.com", "443");
 
             stream_ = std::make_unique<beast::ssl_stream<beast::tcp_stream>>(ioc_, ssl_ctx_);
 
             // Set SNI Hostname (many hosts need this to handshake successfully)
-            if(!SSL_set_tlsext_host_name(stream_->native_handle(), "api.cdp.coinbase.com")) {
+            if(!SSL_set_tlsext_host_name(stream_->native_handle(), "api.coinbase.com")) {
                 beast::error_code ec{static_cast<int>(::ERR_get_error()), net::error::get_ssl_category()};
                 throw beast::system_error{ec};
             }
@@ -95,7 +95,7 @@ namespace hft {
 
         Order order;
         const std::string request_path = "/api/v3/brokerage/orders";
-        const std::string host = "api.cdp.coinbase.com";
+        const std::string host = "api.coinbase.com";
         
         // Reusable request object to minimize allocations
         http::request<http::buffer_body> req;
