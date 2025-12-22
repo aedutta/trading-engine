@@ -27,6 +27,7 @@ namespace hft::constants {
     constexpr int FEED_HANDLER_CORE = 0;
     constexpr int STRATEGY_ENGINE_CORE = 1;
     constexpr int EXECUTION_GATEWAY_CORE = 0;
+    constexpr int LOGGER_CORE = 0;
 
     constexpr double DEFAULT_ORDER_QTY = 0.01;
     // Updated threshold to 110,000.00 to ensure trades trigger on current dataset (Price ~109,600)

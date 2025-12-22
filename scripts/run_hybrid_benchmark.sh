@@ -39,6 +39,15 @@ else
     echo "Error: execution_latencies.csv not found."
 fi
 
+# 5. Analyze PnL
+echo ""
+echo "[5/5] Analyzing PnL..."
+if [ -f "trades.csv" ]; then
+    python3 tools/analyze_pnl.py trades.csv
+else
+    echo "Error: trades.csv not found (No trades executed?)."
+fi
+
 echo ""
 echo "--------------------------------------------------"
 echo "  Benchmark Complete"

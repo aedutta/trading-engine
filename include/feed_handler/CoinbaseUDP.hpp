@@ -84,6 +84,7 @@ namespace hft {
         // Force inline this specific handler too
         __attribute__((always_inline))
         void process_book_update(const uint8_t* base_ptr, uint16_t len, uint16_t block_len) {
+            (void)len; // Suppress unused parameter warning
             // SBE format: Header -> RootBlock -> RepeatingGroup
 
             // Pointer Arithmetic: Skip Header

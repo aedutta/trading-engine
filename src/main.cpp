@@ -8,9 +8,9 @@
 #ifdef USE_DPDK
 #include "network/DPDKPoller.hpp"
 #endif
+#include "common/Logger.hpp"
 #include <iostream>
 #include <memory>
-
 #include <csignal>
 #include <atomic>
 #include <sys/mman.h>
@@ -60,6 +60,10 @@ int main(int argc, char** argv) {
     std::signal(SIGINT, signal_handler);
     std::signal(SIGTERM, signal_handler);
 
+    // Start Async Logger
+    hft::AsyncLogger::instance().start("hft_engine.log");
+    LOG_INFO("Starting HFT Engine...");
+
 #ifdef USE_DPDK
     // Initialize DPDK EAL (Environment Abstraction Layer)
     // This must be done before any other threads are spawned
@@ -90,9 +94,9 @@ int main(int argc, char** argv) {
     hft::StrategyEngine strategy_engine(*feed_to_strategy_queue, *strategy_to_exec_queue);
     
 #ifdef USE_DPDK
-    hft::ExecutionGateway execution_gateway(*strategy_to_exec_queue, &dpdk_poller);
+    hft::ExecutionGateway execution_gateway(*strategy_to_exec_queue);
 #else
-    hft::ExecutionGateway execution_gateway(*strategy_to_exec_queue, nullptr);
+    hft::ExecutionGateway execution_gateway(*strategy_to_exec_queue);
 #endif
 
     execution_gateway.start();
@@ -147,8 +151,10 @@ int main(int argc, char** argv) {
 #endif
 
     std::cout << "Stopping engine..." << std::endl;
+    LOG_INFO("Stopping engine...");
     strategy_engine.stop();
     execution_gateway.stop();
+    hft::AsyncLogger::instance().stop();
 
     return 0;
 }

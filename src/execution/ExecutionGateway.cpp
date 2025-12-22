@@ -7,35 +7,41 @@
 
 namespace hft {
 
-    ExecutionGateway::ExecutionGateway(RingBuffer<Order, constants::RING_BUFFER_SIZE>& input_buffer, network::DPDKPoller* poller)
-        : input_buffer_(input_buffer), poller_(poller) {
+    ExecutionGateway::ExecutionGateway(RingBuffer<Order, constants::RING_BUFFER_SIZE>& input_buffer)
+        : input_buffer_(input_buffer) {
             latencies_.reserve(1000000); 
             executed_orders_.reserve(1000000);
+
+            // Load root certificates (optional, for now we might skip or use default)
+            // ssl_ctx_.set_default_verify_paths();
+            ssl_ctx_.set_verify_mode(ssl::verify_none); // For sandbox/testing speed
         }
 
-    // Function: start
-    // Description: Starts the execution gateway thread.
-    // Inputs: None.
-    // Outputs: None.
+    ExecutionGateway::~ExecutionGateway() {
+        if(stream_) {
+            beast::error_code ec;
+            stream_->shutdown(ec);
+        }
+    }
+
     void ExecutionGateway::start() {
         running_ = true;
         thread_ = std::thread(&ExecutionGateway::run, this);
+        reconcile_thread_ = std::thread(&ExecutionGateway::reconcile_loop, this);
     }
 
-    // Function: stop
-    // Description: Stops the execution gateway thread and dumps latency data.
-    // Inputs: None.
-    // Outputs: None.
     void ExecutionGateway::stop() {
         running_ = false;
         if (thread_.joinable()) {
             thread_.join();
         }
+        if (reconcile_thread_.joinable()) {
+            reconcile_thread_.join();
+        }
 
         std::ofstream file("execution_latencies.csv");
         file << "latency_ns\n"; 
         for (const auto& lat : latencies_) {
-            // Convert cycles to nanoseconds
             file << (lat / utils::CYCLES_PER_NS) << "\n";
         }
         file.close();
@@ -52,39 +58,214 @@ namespace hft {
         trades_file.close();
     }
 
-    // Function: run
-    // Description: Main loop for the execution gateway. Processes orders and measures latency.
-    // Inputs: None.
-    // Outputs: None.
+    void ExecutionGateway::connect() {
+        try {
+            tcp::resolver resolver(ioc_);
+            auto const results = resolver.resolve("api.cdp.coinbase.com", "443");
+
+            stream_ = std::make_unique<beast::ssl_stream<beast::tcp_stream>>(ioc_, ssl_ctx_);
+
+            // Set SNI Hostname (many hosts need this to handshake successfully)
+            if(!SSL_set_tlsext_host_name(stream_->native_handle(), "api.cdp.coinbase.com")) {
+                beast::error_code ec{static_cast<int>(::ERR_get_error()), net::error::get_ssl_category()};
+                throw beast::system_error{ec};
+            }
+
+            beast::get_lowest_layer(*stream_).connect(results);
+            
+            // TCP_NODELAY
+            beast::get_lowest_layer(*stream_).socket().set_option(tcp::no_delay(true));
+
+            stream_->handshake(ssl::stream_base::client);
+            std::cout << "[Exec] Connected to Coinbase Production via Boost.Beast" << std::endl;
+        } catch (std::exception const& e) {
+            std::cerr << "[Exec] Connection failed: " << e.what() << std::endl;
+            stream_.reset();
+        }
+    }
+
     void ExecutionGateway::run() {
         utils::pin_thread_to_core(constants::EXECUTION_GATEWAY_CORE);
 
+        connect();
+
         Order order;
+        const std::string request_path = "/api/v3/brokerage/orders";
+        const std::string host = "api.cdp.coinbase.com";
+        
+        // Reusable request object to minimize allocations
+        http::request<http::buffer_body> req;
+        req.method(http::verb::post);
+        req.target(request_path);
+        req.set(http::field::host, host);
+        req.set(http::field::content_type, "application/json");
+        req.set(http::field::user_agent, "HFT-Engine/1.0");
+
+        beast::flat_buffer buffer; // Buffer for reading response
 
         while (running_) {
             if (input_buffer_.pop(order)) {
-                uint64_t now = utils::rdtsc();
-                
-                // Send via DPDK if available
-                if (poller_) {
-                    // In a real system, we would serialize 'order' to FIX/SBE here.
-                    // For benchmark, we send the raw struct.
-                    poller_->send(reinterpret_cast<const uint8_t*>(&order), sizeof(Order));
+                std::cout << "[Exec] Order popped: " << order.id << std::endl;
+                uint64_t pop_time = utils::rdtsc();
+
+                if (!risk_manager_.check_and_reserve(order)) {
+                    std::cerr << "[Exec] Risk check failed for order " << order.id << std::endl;
+                    continue;
                 }
 
-                // Note: order.origin_timestamp must also be captured via rdtsc() in FeedHandler/Strategy
-                // Currently it is likely still using chrono. We need to update FeedHandler/Strategy too.
-                uint64_t latency = now - order.origin_timestamp;
-                
-                if (latencies_.size() < latencies_.capacity()) {
-                    latencies_.push_back(latency);
+                // Rate Limit Check (Token Bucket)
+                if (!rate_limiter_.consume(1.0)) {
+                    std::cerr << "[Exec] Rate limit hit, dropping order " << order.id << std::endl;
+                    risk_manager_.rollback_order(order);
+                    continue;
                 }
+
+                // Reconnect if needed
+                if (!stream_) {
+                    connect();
+                    if (!stream_) {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                        continue;
+                    }
+                }
+
+                // 2. Generate JWT (Zero-Copy)
+                size_t jwt_len = 0;
+                auth_.generate_jwt_zero_copy("POST", request_path.c_str(), host.c_str(), jwt_buffer_, sizeof(jwt_buffer_), jwt_len);
+
+                // 3. Construct JSON Body (Zero-Copy)
+                int payload_len = snprintf(payload_buffer_, sizeof(payload_buffer_),
+                    "{\"client_order_id\":\"%lu\",\"product_id\":\"BTC-USDT\",\"side\":\"%s\",\"order_configuration\":{\"limit_limit_gtc\":{\"base_size\":\"%.8f\",\"limit_price\":\"%.2f\"}}}",
+                    order.id,
+                    order.is_buy ? "BUY" : "SELL",
+                    (double)order.quantity / 100000000.0,
+                    (double)order.price / 100000000.0
+                );
+
+                // 4. Setup Request
+                snprintf(auth_header_buffer_, sizeof(auth_header_buffer_), "Bearer %s", jwt_buffer_);
+                req.set(http::field::authorization, auth_header_buffer_);
                 
-                if (executed_orders_.size() < executed_orders_.capacity()) {
-                    executed_orders_.push_back(order);
+                req.body().data = payload_buffer_;
+                req.body().size = payload_len;
+                req.prepare_payload(); // Sets Content-Length
+
+                // 5. Send
+                try {
+                    http::write(*stream_, req);
+                    
+                    // 6. Read Response
+                    http::response<http::string_body> res;
+                    http::read(*stream_, buffer, res);
+                    
+                    uint64_t end_time = utils::rdtsc();
+                    
+                    std::cout << "[Exec] Sent order " << order.id << ". Status: " << res.result_int() << std::endl;
+
+                    // Parse Response with simdjson
+                    try {
+                        simdjson::dom::element doc = json_parser_.parse(res.body());
+                        (void)doc; // Suppress unused variable warning
+                        if (res.result_int() == 200) {
+                            // Extract order_id if needed
+                            // std::string_view order_id = doc["order_id"];
+                        } else {
+                            std::cerr << "[Exec] Error response: " << res.body() << std::endl;
+                        }
+                    } catch (simdjson::simdjson_error& e) {
+                        std::cerr << "[Exec] JSON parse error: " << e.what() << std::endl;
+                    }
+                    
+                    uint64_t latency = end_time - pop_time;
+                    if (latencies_.size() < latencies_.capacity()) latencies_.push_back(latency);
+                    if (executed_orders_.size() < executed_orders_.capacity()) executed_orders_.push_back(order);
+
+                } catch (std::exception const& e) {
+                    std::cerr << "[Exec] Request failed: " << e.what() << std::endl;
+                    risk_manager_.rollback_order(order);
+                    stream_.reset(); // Force reconnect
                 }
             } else {
                 _mm_pause();
+            }
+        }
+    }
+
+    void ExecutionGateway::reconcile_loop() {
+        // Separate IO context and SSL context for reconciliation
+        net::io_context ioc;
+        ssl::context ssl_ctx{ssl::context::tlsv13_client};
+        ssl_ctx.set_verify_mode(ssl::verify_none);
+        
+        CoinbaseAuth auth; // Load keys from env
+        simdjson::dom::parser parser;
+
+        while (running_) {
+            try {
+                // Sleep for 5 seconds
+                std::this_thread::sleep_for(std::chrono::seconds(5));
+                if (!running_) break;
+
+                tcp::resolver resolver(ioc);
+                auto const results = resolver.resolve("api.cdp.coinbase.com", "443");
+                beast::ssl_stream<beast::tcp_stream> stream(ioc, ssl_ctx);
+
+                if(!SSL_set_tlsext_host_name(stream.native_handle(), "api.cdp.coinbase.com")) {
+                    throw beast::system_error{beast::error_code{static_cast<int>(::ERR_get_error()), net::error::get_ssl_category()}};
+                }
+
+                beast::get_lowest_layer(stream).connect(results);
+                stream.handshake(ssl::stream_base::client);
+
+                // GET /api/v3/brokerage/accounts
+                std::string request_path = "/api/v3/brokerage/accounts";
+                std::string host = "api.cdp.coinbase.com";
+                
+                char jwt_buf[1024];
+                size_t jwt_len = 0;
+                auth.generate_jwt_zero_copy("GET", request_path.c_str(), host.c_str(), jwt_buf, sizeof(jwt_buf), jwt_len);
+
+                http::request<http::string_body> req{http::verb::get, request_path, 11};
+                req.set(http::field::host, host);
+                req.set(http::field::user_agent, "HFT-Engine/1.0");
+                req.set(http::field::authorization, std::string("Bearer ") + std::string(jwt_buf, jwt_len));
+
+                // Resolve again if needed or reuse resolver? 
+                // We created a new stream/resolver each iteration, so we need to resolve the correct host.
+                // The resolver above resolved "api.cdp.coinbase.com". We need to fix that too.
+
+
+                beast::flat_buffer buffer;
+                http::response<http::string_body> res;
+                http::read(stream, buffer, res);
+
+                if (res.result() == http::status::ok) {
+                    simdjson::dom::element doc = parser.parse(res.body());
+                    simdjson::dom::array accounts = doc["accounts"];
+                    
+                    int64_t usd_bal = 0;
+                    int64_t btc_bal = 0;
+
+                    for (simdjson::dom::element account : accounts) {
+                        std::string_view currency = account["currency"];
+                        if (currency == "USD" || currency == "USDC") {
+                            // Parse available_balance.value
+                            double val = std::stod(std::string(account["available_balance"]["value"]));
+                            usd_bal += static_cast<int64_t>(val * 100000000); // Convert to 1e8 fixed point
+                        } else if (currency == "BTC") {
+                            double val = std::stod(std::string(account["available_balance"]["value"]));
+                            btc_bal += static_cast<int64_t>(val * 100000000);
+                        }
+                    }
+                    
+                    risk_manager_.set_balances(usd_bal, btc_bal);
+                    // std::cout << "[Reconcile] Updated balances: USD=" << usd_bal << " BTC=" << btc_bal << std::endl;
+                }
+
+                beast::error_code ec;
+                stream.shutdown(ec);
+            } catch (std::exception const& e) {
+                // std::cerr << "[Reconcile] Error: " << e.what() << std::endl;
             }
         }
     }

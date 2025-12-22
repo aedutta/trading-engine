@@ -7,6 +7,10 @@
     "curl",
     "fmt",
     "boost-lockfree",
-    "boost-system"
+    "boost-system",
+    "boost-beast",
+    "boost-asio",
+    "boost-url",
+    "openssl"
   ]
 }

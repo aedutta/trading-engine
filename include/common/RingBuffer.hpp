@@ -63,6 +63,10 @@ namespace hft {
             size_t current_tail = tail.load(std::memory_order_relaxed);
             return (current_head - current_tail) & (Size - 1);
         }
+
+        bool isEmpty() const {
+            return head.load(std::memory_order_acquire) == tail.load(std::memory_order_acquire);
+        }
     };
 
 }

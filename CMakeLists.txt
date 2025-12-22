@@ -19,6 +19,7 @@ else()
 endif()
 
 include_directories(include)
+include_directories(${Boost_INCLUDE_DIRS})
 
 # Dependencies
 find_package(Threads REQUIRED)
@@ -26,6 +27,8 @@ find_package(Threads REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(ZLIB REQUIRED)
 find_package(PkgConfig REQUIRED)
+find_package(CURL REQUIRED)
+find_package(Boost REQUIRED)
 
 # DPDK Support
 option(ENABLE_DPDK "Enable DPDK support" ON)
@@ -78,6 +81,7 @@ add_executable(hft_engine
     src/feed_handler/FeedHandler.cpp
     src/strategy/StrategyEngine.cpp
     src/execution/ExecutionGateway.cpp
+    src/execution/CoinbaseAuth.cpp
     src/network/DPDKPoller.cpp
 )
 
@@ -95,6 +99,7 @@ target_link_libraries(hft_engine PRIVATE
     ixwebsocket::ixwebsocket
     OpenSSL::SSL OpenSSL::Crypto
     ZLIB::ZLIB
+    CURL::libcurl
 )
 
 # Replay Engine
@@ -103,6 +108,7 @@ add_executable(replay_engine
     src/feed_handler/FeedHandler.cpp
     src/strategy/StrategyEngine.cpp
     src/execution/ExecutionGateway.cpp
+    src/execution/CoinbaseAuth.cpp
     src/network/DPDKPoller.cpp
 )
 
@@ -118,6 +124,7 @@ target_link_libraries(replay_engine PRIVATE
     ixwebsocket::ixwebsocket
     OpenSSL::SSL OpenSSL::Crypto
     ZLIB::ZLIB
+    CURL::libcurl
 )
 
 # Integration Tests
@@ -133,4 +140,17 @@ target_link_libraries(integration_feed PRIVATE
     ixwebsocket::ixwebsocket
     OpenSSL::SSL OpenSSL::Crypto
     ZLIB::ZLIB
+)
+# Auth Test
+add_executable(test_auth
+    tests/test_auth.cpp
+    src/execution/CoinbaseAuth.cpp
+)
+
+target_link_libraries(test_auth PRIVATE 
+    Threads::Threads
+    fmt::fmt
+    simdjson
+    OpenSSL::SSL OpenSSL::Crypto
+    CURL::libcurl
 )

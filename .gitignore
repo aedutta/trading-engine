@@ -17,3 +17,4 @@ latencies.csv
 # Secrets
 private/
 *.pem
+venv/
