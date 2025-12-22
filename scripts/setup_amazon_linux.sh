@@ -14,7 +14,7 @@ fi
 echo "[1/3] Installing Dependencies..."
 dnf update -y
 dnf groupinstall "Development Tools" -y
-dnf install -y cmake git ethtool wget tar kernel-devel numactl-devel python3-pip openssl-devel
+dnf install -y cmake git ethtool wget tar kernel-devel numactl-devel python3-pip openssl-devel boost-devel libcurl-devel
 
 # Install Meson and Ninja for building DPDK
 pip3 install meson ninja pyelftools
