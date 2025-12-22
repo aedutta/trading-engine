@@ -12,6 +12,10 @@ namespace hft {
             latencies_.reserve(1000000); 
             executed_orders_.reserve(1000000);
 
+            // Initialize Risk Manager with Paper Trading Balances
+            // $100,000 USD and 10 BTC
+            risk_manager_.set_balances(100000LL * 100000000LL, 10LL * 100000000LL);
+
             // Load root certificates (optional, for now we might skip or use default)
             // ssl_ctx_.set_default_verify_paths();
             ssl_ctx_.set_verify_mode(ssl::verify_none); // For sandbox/testing speed
