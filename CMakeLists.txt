@@ -140,7 +140,6 @@ target_link_libraries(integration_feed PRIVATE
     ZLIB::ZLIB
 )
 # Auth Test
-add_executable(test_auth
 if(CURL_FOUND)
     add_executable(test_auth
         tests/test_auth.cpp
@@ -154,4 +153,4 @@ if(CURL_FOUND)
         OpenSSL::SSL OpenSSL::Crypto
         CURL::libcurl
     )
-endif(
+endif()
