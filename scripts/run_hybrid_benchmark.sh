@@ -9,10 +9,10 @@ echo "  HFT Hybrid Engine Benchmark ($DURATION seconds)"
 echo "--------------------------------------------------"
 
 # 1. Build
-echo "[1/4] Building with DPDK/Hybrid Mode..."
+echo "[1/4] Building Engine..."
 mkdir -p $BUILD_DIR
 cd $BUILD_DIR
-cmake -DUSE_DPDK=ON ..
+cmake -DENABLE_DPDK=OFF ..
 make -j$(nproc)
 cd ..
 
