@@ -27,7 +27,7 @@ find_package(Threads REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(ZLIB REQUIRED)
 find_package(PkgConfig REQUIRED)
-find_package(CURL REQUIRED)
+find_package(CURL) # Optional, only for test_auth
 find_package(Boost REQUIRED)
 
 # DPDK Support
@@ -99,7 +99,6 @@ target_link_libraries(hft_engine PRIVATE
     ixwebsocket::ixwebsocket
     OpenSSL::SSL OpenSSL::Crypto
     ZLIB::ZLIB
-    CURL::libcurl
 )
 
 # Replay Engine
@@ -124,7 +123,6 @@ target_link_libraries(replay_engine PRIVATE
     ixwebsocket::ixwebsocket
     OpenSSL::SSL OpenSSL::Crypto
     ZLIB::ZLIB
-    CURL::libcurl
 )
 
 # Integration Tests
@@ -143,14 +141,17 @@ target_link_libraries(integration_feed PRIVATE
 )
 # Auth Test
 add_executable(test_auth
-    tests/test_auth.cpp
-    src/execution/CoinbaseAuth.cpp
-)
+if(CURL_FOUND)
+    add_executable(test_auth
+        tests/test_auth.cpp
+        src/execution/CoinbaseAuth.cpp
+    )
 
-target_link_libraries(test_auth PRIVATE 
-    Threads::Threads
-    fmt::fmt
-    simdjson
-    OpenSSL::SSL OpenSSL::Crypto
-    CURL::libcurl
-)
+    target_link_libraries(test_auth PRIVATE 
+        Threads::Threads
+        fmt::fmt
+        simdjson
+        OpenSSL::SSL OpenSSL::Crypto
+        CURL::libcurl
+    )
+endif(
