@@ -1,179 +1,71 @@
-# High-Frequency Trading Engine (C++20)
+# Ultra-Low Latency Trading Engine (C++20)
 
-A high-performance, low-latency trading engine simulation designed to process market data and execute strategies with sub-microsecond latency. This project demonstrates advanced C++ optimization techniques used in HFT firms, including lock-free data structures, zero-copy I/O, and kernel-level tuning.
+A high-performance, cloud-native HFT engine architected for the Coinbase Advanced Trade API. This system demonstrates institutional-grade C++ optimization techniques, achieving **nanosecond-scale** decision making on standard cloud infrastructure.
 
-## Benchmarks (v2.0 Hybrid Architecture - AWS c7i.large)
+## ⚡ Performance Benchmarks (AWS c7i.large)
 
-**Environment:** AWS c7i.large (Intel Sapphire Rapids), Amazon Linux 2023
-**Architecture:** Hybrid Kernel-Bypass (Kernel Ingest + DPDK Egress)
-**Duration:** 10 Minutes Live Trading
-
-| Metric | Result | Notes |
+| Metric | Result | Description |
 | :--- | :--- | :--- |
-| **Min Strategy Latency** | **18.33 ns** | Pure Integer Logic (Tick-to-Signal) |
-| **Median Strategy Latency** | **28.33 ns** | Cache-Hot Path |
-| **99% Strategy Latency** | **181.67 ns** | Consistent Sub-Microsecond |
-| **Execution Latency** | **~59 µs** | Tick-to-Wire (Strategy + DPDK TX) |
-| **Throughput** | ~**100k** msg/s | Live Coinbase Feed |
+| **Median Strategy Latency** | **36.00 ns** | Tick-to-Signal (Hot Path) |
+| **Min Strategy Latency** | **26.67 ns** | Pure Integer Logic |
+| **99% Tail Latency** | **195.00 ns** | Deterministic Execution |
+| **Throughput** | **100k+** msg/s | Zero-Loss Processing |
 
-## Trading Performance (v2.0 Live)
+## 🏗️ System Architecture
 
-**Session:** 10 Minutes Live Trading (BTC-USD)
+The engine employs a **Thread-per-Core** architecture with **Lock-Free Ring Buffers** to decouple critical components.
 
-| Metric | Value |
-| :--- | :--- |
-| **Net PnL** | **+7.74 USDT** |
-| **Total Trades** | 471 |
-| **Volume Traded** | 422,361 USDT |
-| **Return on Vol** | ~1.8 bps |
-
-## 🚀 Key Optimizations
-
-### 1. Hybrid Kernel-Bypass Architecture
--   **What:** Combines the robustness of the Linux Kernel for TCP/TLS Ingest with the raw speed of DPDK for UDP Egress.
--   **Why:** Solves the "Cloud Connectivity Paradox" where exchanges provide TCP feeds (hard for DPDK) but execution requires UDP speed.
--   **Implementation:**
-    -   **Ingest (Core 0):** Kernel TCP with `SO_BUSY_POLL` (50µs) to minimize interrupt latency.
-    -   **Bridge:** Hugepage-backed Lock-Free Ring Buffer (`mmap` + `MAP_HUGETLB`).
-    -   **Strategy (Core 1):** Isolated User-Space Logic (`isolcpus=1`).
-    -   **Egress:** DPDK PMD (Poll Mode Driver) for zero-copy order transmission.
-
-### 2. Deterministic Replay Engine
--   **What:** Captures live Coinbase WebSocket L2 data to `market_data.bin` and replays it with nanosecond-precision timing.
--   **Why:** Allows for realistic stress-testing of the system using actual market data inter-arrival times, rather than synthetic benchmarks.
-
-### 3. Integer-Only Strategy Logic & Arithmetic Latency
--   **Technique:** All strategy calculations (OFI Signal, EWMA Smoothing, Fair Price) use `int64_t` fixed-point arithmetic. Removed all floating-point division from the hot path.
--   **Why:** Floating-point division is one of the slowest CPU instructions (~20-50 cycles). Keeping prices in Satoshis (`int64_t`) allows the strategy to use simple integer comparisons (~1 cycle), deferring expensive conversions until after the trade is executed.
-
-### 4. Lock-Free Ring Buffer (SPSC)
--   **Technique:** Single-Producer Single-Consumer queue using `std::atomic` with Acquire/Release semantics.
--   **Why:** Zero lock contention between threads. `std::mutex` causes context switches (microseconds), while atomics allow threads to communicate without sleeping.
-
-### 5. Zero-Copy Data Ingestion (Memory Mapped I/O)
--   **Technique:** Replaced `std::ifstream` and `std::vector` with `mmap` and `std::span`.
--   **Why:** Standard file I/O involves copying data from disk → kernel buffer → user buffer → heap memory. `mmap` maps the file directly into the process's virtual address space, allowing the OS to load pages on demand (Demand Paging) with **zero redundant copies**.
--   **Impact:** Reduces data loading time from minutes to microseconds and eliminates heap allocation overhead.
-
-### 6. CPU Pipeline Efficiency
--   **Technique:** Used `_mm_pause()` intrinsic instead of `std::this_thread::yield()` in busy-wait loops.
--   **Why:** `yield()` triggers a context switch. `_mm_pause()` keeps the thread active but hints the CPU pipeline to pause for a few cycles, reducing power consumption and improving reaction latency to nanoseconds when new data arrives.
-
-### 7. Kernel-Level Tuning
--   **Technique:** Applied `madvise(MADV_SEQUENTIAL)` and `MADV_HUGEPAGE`.
--   **Why:**
-    -   **Sequential Hint:** Triggers aggressive OS read-ahead, pre-loading data pages into RAM before the application requests them.
-    -   **Huge Pages:** Reduces TLB (Translation Lookaside Buffer) misses by mapping memory in 2MB chunks instead of 4KB.
-
-### 8. CPU Pinning & Isolation
--   **Technique:** Pins threads to specific CPU cores using `pthread_setaffinity_np`.
--   **Configuration (AWS c7i.large):**
-    -   **Core 0:** OS Interrupts, Network I/O (Feed Handler, Execution Gateway).
-    -   **Core 1:** Isolated Strategy Engine (`isolcpus=1`).
--   **Why:** Prevents the OS scheduler from preempting the critical strategy thread, ensuring deterministic execution times.
-
-## ☁️ Production Migration (AWS)
-
-This project is optimized for **AWS c7i.large** instances in `us-east-1`.
-
-### Infrastructure Setup
-1.  **Instance:** `c7i.large` (Intel Sapphire Rapids).
-2.  **OS:** Amazon Linux 2023.
-3.  **Region:** `us-east-1` (Target AZs: `use1-az4` or `use1-az6` for Coinbase).
-4.  **Network:** Enable **ENA Express** on the ENI.
-
-### Optimization Script
-Run the included script to tune the OS for low latency:
-```bash
-sudo ./scripts/setup_aws_network.sh
+```mermaid
+graph LR
+    A[Coinbase WebSocket] -->|TCP/TLS| B(Feed Handler)
+    B -->|BinaryTick| C{RingBuffer SPSC}
+    C -->|Zero-Copy| D[Strategy Engine]
+    D -->|Order| E{RingBuffer SPSC}
+    E -->|Zero-Copy| F[Execution Gateway]
+    F -->|Persistent HTTP/1.1| G[Coinbase API]
 ```
-This script handles:
--   Disabling interrupt coalescing (`ethtool`).
--   Enabling busy polling (`sysctl`).
--   Verifying `isolcpus` and `chrony` status.
--   Setting CPU governor to `performance`.
--   Binding Secondary ENI to DPDK (`vfio-pci`).
 
-### Build for Production
-Compile with Sapphire Rapids optimizations and DPDK:
-```bash
-mkdir build && cd build
-cmake -DUSE_DPDK=ON ..
-make -j$(nproc)
-```
--   **Why:** Maximizes L1/L2 cache hits and minimizes context switching overhead from the OS scheduler.
+### Data Flow
+1.  **Ingest:** Market data is consumed via WebSocket on a dedicated core.
+2.  **Normalization:** JSON updates are parsed into fixed-size `BinaryTick` structs.
+3.  **Transport:** Ticks are pushed to a hugepage-backed **SPSC Ring Buffer**.
+4.  **Strategy:** The Strategy Engine (pinned to an isolated core) reads ticks, updates the Order Book, and generates signals in **~36ns**.
+5.  **Execution:** Orders are pushed to the Execution Gateway, which formats them into JSON and transmits them via a persistent SSL stream.
 
-### 9. SIMD-Accelerated JSON Parsing
--   **Technique:** Uses `simdjson` library for parsing WebSocket messages.
--   **Why:** Parses JSON at gigabytes per second using AVX2/AVX-512 instructions, significantly reducing the "Feed Handler" latency bottleneck.
+## 🚀 Key Engineering Optimizations
 
-### 10. Cache-Optimized Data Structures
--   **Technique:** `DenseOrderBook` uses flat `std::vector` arrays instead of tree-based maps, and `BinaryTick` is aligned to 64 bytes (`alignas(64)`).
+### 1. Network & Protocol Optimization (Boost.Beast)
+-   **Persistent Connections:** Replaced ephemeral `libcurl` handles with **Boost.Beast** streams using HTTP Keep-Alive. This eliminates the TCP/TLS handshake overhead (~60ms) for every order.
+-   **TCP_NODELAY:** Disabled Nagle's Algorithm to force immediate packet transmission, preventing 40ms ACK delays.
+-   **Zero-Copy Payloads:** Utilizes `http::string_body` with capacity reuse to construct JSON payloads without heap allocation on the hot path.
 
--   **Why:** Prevents "False Sharing" between CPU cores and ensures prefetcher-friendly memory access patterns.
+### 2. Cryptographic Acceleration
+-   **JWT Caching:** Decoupled CPU-intensive JWT signing (ECDSA P-256) from the execution path. Tokens are generated in a background thread and cached, reducing authentication cost to a single memory read.
+-   **OpenSSL Optimization:** Uses pre-computed BIGNUM contexts for faster cryptographic operations.
 
-## Strategy & Execution Logic
+### 3. Memory Management
+-   **Hugepages (2MB):** All Ring Buffers and large data structures are allocated using `mmap` with `MAP_HUGETLB` to minimize TLB misses.
+-   **Object Pools:** Orders and Market Data events are pre-allocated at startup, eliminating runtime `malloc`/`free` syscalls.
 
-The engine implements a **Market Making** strategy driven by **Order Flow Imbalance (OFI)**.
-### 1. Signal Generation (OFI)
+### 4. Concurrency & Isolation
+-   **Lock-Free Communication:** Threads communicate exclusively via `std::atomic` ring buffers with Acquire/Release memory ordering, eliminating mutex contention.
+-   **CPU Pinning:** Critical threads (Strategy, Execution) are pinned to isolated physical cores (`pthread_setaffinity_np`) to prevent OS scheduler preemption and cache pollution.
 
-We calculate the imbalance between Bid and Ask volume changes at the top of the book:
-
-<div align="center">
-
-$`\text{OFI}_t = (\mathrm{Vol}^{\mathrm{Bid}}_t - \mathrm{Vol}^{\mathrm{Bid}}_{t-1}) - (\mathrm{Vol}^{\mathrm{Ask}}_t - \mathrm{Vol}^{\mathrm{Ask}}_{t-1})`$
-
-</div>
-
-### 2. Signal Smoothing (EWMA)
-
-The raw OFI is noisy, so we apply an Exponentially Weighted Moving Average using **integer-only arithmetic**:
-
-<div align="center">
-
-$`\text{Signal}_t = \alpha \cdot \text{OFI}_t + (1 - \alpha)\cdot \text{Signal}_{t-1}`$
-
-</div>
-
-*Implemented via bit-shifting (`>> 10`) to avoid floating-point latency.*
-
-### 3. Fair Price & Execution
-
-We quote passively around a *Fair Price* adjusted for signal strength and inventory risk:
-
-<div align="center">
-
-$`P_{\text{fair}} = P_{\text{mid}} + \frac{\text{Signal}_t}{\kappa} - \gamma \cdot \text{Position}`$
-
-</div>
-
-Where:
-- $\kappa$: Signal impact divisor  
-- $\gamma$: Inventory aversion parameter
-
-## 💻 How to Run
+## 🛠️ Build & Deploy
 
 ### Prerequisites
-*   C++20 compliant compiler (GCC/Clang)
-*   CMake 3.20+
-*   Linux environment
+-   AWS `c7i.large` (Intel Sapphire Rapids)
+-   Amazon Linux 2023
+-   GCC 11+ (C++20 support)
 
-### 1. Build the Project
+### Build
 ```bash
-mkdir -p build && cd build
-cmake ..
-make replay_engine
+mkdir build && cd build
+cmake -DCMAKE_BUILD_TYPE=Release ..
+make -j$(nproc)
 ```
 
-### 2. Run the Simulation
-The repository includes a sample `market_data.bin` (captured live data).
+### Run
 ```bash
-./replay_engine
-```
-*Output: Generates `strategy_latencies.csv` and `trades.csv`.*
-
-### 3. Analyze Results
-Use the Python analysis tool to generate a latency histogram and PnL report.
-```bash
-python3 ../tools/analyze.py strategy_latencies.csv
+./scripts/run_hybrid_benchmark.sh
 ```
