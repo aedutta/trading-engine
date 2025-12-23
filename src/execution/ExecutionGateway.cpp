@@ -112,7 +112,7 @@ namespace hft {
         const std::string host = "api.coinbase.com";
         
         // Reusable request object to minimize allocations
-        http::request<http::buffer_body> req;
+        http::request<http::string_body> req;
         req.method(http::verb::post);
         req.target(request_path);
         req.set(http::field::host, host);
@@ -166,8 +166,7 @@ namespace hft {
                 snprintf(auth_header_buffer_, sizeof(auth_header_buffer_), "Bearer %s", cached_jwt_.c_str());
                 req.set(http::field::authorization, auth_header_buffer_);
                 
-                req.body().data = payload_buffer_;
-                req.body().size = payload_len;
+                req.body().assign(payload_buffer_, payload_len);
                 req.prepare_payload(); // Sets Content-Length
 
                 // 5. Send
