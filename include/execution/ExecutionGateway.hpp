@@ -100,6 +100,12 @@ namespace hft {
         char jwt_buffer_[1024];
         char payload_buffer_[1024];
         char auth_header_buffer_[1200];
+
+        // JWT Caching
+        std::string cached_jwt_;
+        std::chrono::steady_clock::time_point jwt_expiry_;
+        std::mutex jwt_mutex_;
+        void update_jwt();
     };
 
 }

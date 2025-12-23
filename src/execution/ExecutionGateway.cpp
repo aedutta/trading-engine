@@ -62,6 +62,19 @@ namespace hft {
         trades_file.close();
     }
 
+    void ExecutionGateway::update_jwt() {
+        // Generate a new JWT valid for 2 minutes
+        // We refresh it every 1 minute to be safe
+        size_t jwt_len = 0;
+        const std::string request_path = "/api/v3/brokerage/orders";
+        const std::string host = "api.coinbase.com";
+        
+        auth_.generate_jwt_zero_copy("POST", request_path.c_str(), host.c_str(), jwt_buffer_, sizeof(jwt_buffer_), jwt_len);
+        
+        cached_jwt_ = std::string(jwt_buffer_, jwt_len);
+        jwt_expiry_ = std::chrono::steady_clock::now() + std::chrono::seconds(60);
+    }
+
     void ExecutionGateway::connect() {
         try {
             tcp::resolver resolver(ioc_);
@@ -92,6 +105,7 @@ namespace hft {
         utils::pin_thread_to_core(constants::EXECUTION_GATEWAY_CORE);
 
         connect();
+        update_jwt(); // Initial JWT generation
 
         Order order;
         const std::string request_path = "/api/v3/brokerage/orders";
@@ -104,6 +118,7 @@ namespace hft {
         req.set(http::field::host, host);
         req.set(http::field::content_type, "application/json");
         req.set(http::field::user_agent, "HFT-Engine/1.0");
+        req.set(http::field::connection, "keep-alive"); // Explicit Keep-Alive
 
         beast::flat_buffer buffer; // Buffer for reading response
 
@@ -133,9 +148,10 @@ namespace hft {
                     }
                 }
 
-                // 2. Generate JWT (Zero-Copy)
-                size_t jwt_len = 0;
-                auth_.generate_jwt_zero_copy("POST", request_path.c_str(), host.c_str(), jwt_buffer_, sizeof(jwt_buffer_), jwt_len);
+                // Check JWT Expiry
+                if (std::chrono::steady_clock::now() > jwt_expiry_) {
+                    update_jwt();
+                }
 
                 // 3. Construct JSON Body (Zero-Copy)
                 int payload_len = snprintf(payload_buffer_, sizeof(payload_buffer_),
@@ -147,14 +163,13 @@ namespace hft {
                 );
 
                 // 4. Setup Request
-                snprintf(auth_header_buffer_, sizeof(auth_header_buffer_), "Bearer %s", jwt_buffer_);
+                snprintf(auth_header_buffer_, sizeof(auth_header_buffer_), "Bearer %s", cached_jwt_.c_str());
                 req.set(http::field::authorization, auth_header_buffer_);
                 
                 req.body().data = payload_buffer_;
                 req.body().size = payload_len;
-                req.body().more = false;
-                req.set(http::field::content_length, std::to_string(payload_len));
-                
+                req.prepare_payload(); // Sets Content-Length
+
                 // 5. Send
                 try {
                     http::write(*stream_, req);
@@ -166,6 +181,12 @@ namespace hft {
                     uint64_t end_time = utils::rdtsc();
                     
                     std::cout << "[Exec] Sent order " << order.id << ". Status: " << res.result_int() << std::endl;
+
+                    // Check for Connection: close
+                    if (res.keep_alive() == false) {
+                        std::cout << "[Exec] Server requested close. Reconnecting..." << std::endl;
+                        stream_.reset();
+                    }
 
                     // Parse Response with simdjson
                     try {
@@ -183,12 +204,17 @@ namespace hft {
                     
                     uint64_t latency = end_time - pop_time;
                     if (latencies_.size() < latencies_.capacity()) latencies_.push_back(latency);
-                    if (executed_orders_.size() < executed_orders_.capacity()) executed_orders_.push_back(order);
+                    
+                    if (res.result_int() == 200) {
+                        executed_orders_.push_back(order);
+                    } else {
+                        risk_manager_.rollback_order(order);
+                    }
 
                 } catch (std::exception const& e) {
                     std::cerr << "[Exec] Request failed: " << e.what() << std::endl;
+                    stream_.reset();
                     risk_manager_.rollback_order(order);
-                    stream_.reset(); // Force reconnect
                 }
             } else {
                 _mm_pause();
@@ -212,10 +238,10 @@ namespace hft {
                 if (!running_) break;
 
                 tcp::resolver resolver(ioc);
-                auto const results = resolver.resolve("api.cdp.coinbase.com", "443");
+                auto const results = resolver.resolve("api.coinbase.com", "443");
                 beast::ssl_stream<beast::tcp_stream> stream(ioc, ssl_ctx);
 
-                if(!SSL_set_tlsext_host_name(stream.native_handle(), "api.cdp.coinbase.com")) {
+                if(!SSL_set_tlsext_host_name(stream.native_handle(), "api.coinbase.com")) {
                     throw beast::system_error{beast::error_code{static_cast<int>(::ERR_get_error()), net::error::get_ssl_category()}};
                 }
 
@@ -224,7 +250,7 @@ namespace hft {
 
                 // GET /api/v3/brokerage/accounts
                 std::string request_path = "/api/v3/brokerage/accounts";
-                std::string host = "api.cdp.coinbase.com";
+                std::string host = "api.coinbase.com";
                 
                 char jwt_buf[1024];
                 size_t jwt_len = 0;
@@ -234,11 +260,6 @@ namespace hft {
                 req.set(http::field::host, host);
                 req.set(http::field::user_agent, "HFT-Engine/1.0");
                 req.set(http::field::authorization, std::string("Bearer ") + std::string(jwt_buf, jwt_len));
-
-                // Resolve again if needed or reuse resolver? 
-                // We created a new stream/resolver each iteration, so we need to resolve the correct host.
-                // The resolver above resolved "api.cdp.coinbase.com". We need to fix that too.
-
 
                 beast::flat_buffer buffer;
                 http::response<http::string_body> res;
